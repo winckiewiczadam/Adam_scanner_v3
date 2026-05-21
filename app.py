@@ -151,7 +151,7 @@ def calc_rs(tr,br):
     score=(2*((1+t.iloc[-q:]).prod()-1-(1+b.iloc[-q:]).prod()+1)+((1+t).prod()-1-(1+b).prod()+1))*100
     return round(float(np.clip(50+score,1,99)),1)
 def calc_adr(c,n=20): return round(float(c.tail(n+1).pct_change().dropna().abs().mean()*100),2)
-def calc_rvol(vol,n=20):
+def calc_rvol(vol,n=50):  # Jeff Sun: 50-Day sessions
     avg=float(vol.tail(n+1).iloc[:-1].mean())
     return round(float(vol.iloc[-1])/avg if avg>0 else 1.0,2)
 def calc_vars(c,h,l,n=5):
@@ -199,14 +199,22 @@ def get_spy():
 @st.cache_data(ttl=1800,show_spinner=False)
 def get_sector(etf):
     try:
-        h=yf.Ticker(etf).history(period="6mo",interval="1d",auto_adjust=True)
-        if h is None or len(h)<22: return None
+        h=yf.Ticker(etf).history(period="1y",interval="1d",auto_adjust=True)
+        if h is None or len(h)<55: return None
         c,v=h["Close"].dropna(),h["Volume"].dropna()
         spy=get_spy(); ret=c.pct_change().dropna(); ret.index=ret.index.normalize()
         common=ret.index.intersection(spy.index)
         rs=calc_rs(ret.loc[common],spy.loc[common]) if len(common)>=20 else 50.0
+        # RS direction: teraz vs 5 dni temu
+        rs_5d=calc_rs(ret.loc[common].iloc[:-5],spy.loc[common].iloc[:-5]) if len(common)>25 else rs
+        rs_dir="up" if rs>rs_5d+1 else ("dn" if rs<rs_5d-1 else "flat")
+        # RVOL 50d, SMA50 check
+        rvol50=calc_rvol(v,n=50)
+        s50v=float(sma(c,50).iloc[-1]) if len(c)>=50 else float(c.mean())
+        abv50=1 if float(c.iloc[-1])>=s50v else 0
         return {"rs":rs,"c1d":safe_pct(c,2),"c3d":safe_pct(c,4),"c5d":safe_pct(c,6),
-                "c20d":safe_pct(c,21),"c60d":safe_pct(c,61),"rvol":calc_rvol(v)}
+                "c20d":safe_pct(c,21),"c60d":safe_pct(c,61),
+                "rvol":rvol50,"rs_dir":rs_dir,"abv50":abv50}
     except: return None
 
 @st.cache_data(ttl=1800,show_spinner=False)
@@ -219,7 +227,9 @@ def get_stock(ticker):
         e10=float(ema(c,10).iloc[-1]); e20=float(ema(c,20).iloc[-1])
         s50=float(sma(c,50).iloc[-1]); s100=float(sma(c,100).iloc[-1]); s200=float(sma(c,200).iloc[-1])
         atr_v=float(calc_atr(hh,l,c).iloc[-1]); adr=calc_adr(c)
-        rv=calc_rvol(v); vol_m=round(float(v.tail(20).mean())*p/1e6,1)
+        rv=calc_rvol(v,n=50)  # 50-day RVOL
+        avg_dv=round(float(v.tail(50).mean())*p/1e6,1)  # Avg $ Vol 50D
+        vol_m=avg_dv
         spy=get_spy(); ret=c.pct_change().dropna(); ret.index=ret.index.normalize()
         common=ret.index.intersection(spy.index)
         rs=calc_rs(ret.loc[common],spy.loc[common]) if len(common)>=20 else 50.0
@@ -231,20 +241,32 @@ def get_stock(ticker):
         sign=classify_sign(ext,vars_v,rr)
         sc=comp_score(rs,stage,rv,vars_v,rr)
         def rn(n): return round((p/float(c.iloc[-n])-1)*100,1) if len(c)>n else None
-        # LoD dist: (price - low_of_day) / ATR  — jak daleko od dołka dnia
         low_today=float(l.iloc[-1])
         lod_dist=round((p-low_today)/atr_v*100,1) if atr_v>0 else 0.0
-        # Sector lookup
+        # Inside Day flag
+        range_today=float(hh.iloc[-1])-float(l.iloc[-1])
+        range_yest=float(hh.iloc[-2])-float(l.iloc[-2]) if len(hh)>=2 else range_today+1
+        inside_day=(range_today<range_yest)
+        # VARS score (Jeff Sun: RS × volatility quality)
+        vars_score=round(float(np.clip((rs/50.0)*vars_v,0,10)),1)
+        # Sector + Float (Opcja A — yfinance info)
         try:
-            yf_info=yf.Ticker(ticker).fast_info
-            sec_name=getattr(yf_info,"sector",None) or "—"
-        except: sec_name="—"
+            info=yf.Ticker(ticker).info
+            sec_name=info.get("sector","") or info.get("industry","") or "—"
+            float_sh=info.get("floatShares",None)
+            shares_out=info.get("sharesOutstanding",None)
+            short_pct=info.get("shortPercentOfFloat",None)
+            float_pct=round(float(float_sh)/float(shares_out)*100,1) if float_sh and shares_out else None
+            short_float=round(float(short_pct)*100,1) if short_pct else None
+        except:
+            sec_name="—"; float_pct=None; short_float=None
         return dict(ticker=ticker,cls=cls,sign=sign,stage=stage,rs=rs,adr=adr,rvol=rv,
-                    price=round(p,2),chg1d=safe_pct(c,2),atr_ext=ext,vars=vars_v,rr=rr,
-                    score=sc,ret1m=rn(21),ret3m=rn(63),vol_m=vol_m,
-                    dist52=round((p/h52-1)*100,1),
-                    lod_dist=lod_dist,
-                    sector=sec_name,
+                    price=round(p,2),chg1d=safe_pct(c,2),atr_ext=ext,vars=vars_v,
+                    vars_score=vars_score,rr=rr,score=sc,
+                    ret1m=rn(21),ret3m=rn(63),vol_m=vol_m,avg_dv=avg_dv,
+                    dist52=round((p/h52-1)*100,1),lod_dist=lod_dist,
+                    inside_day=inside_day,sector=sec_name,
+                    float_pct=float_pct,short_float=short_float,
                     ma_e10=(p>=e10),ma_s20=(p>=e20),ma_s50=(p>=s50),ma_s200=(p>=s200),
                     sl1=round(p-atr_v,2),sl2=round(p-2*atr_v,2),
                     t1=round(p+2*atr_v,2),t2=round(p+3*atr_v,2))
@@ -339,15 +361,26 @@ def dist52_html(v):
     return f'<span style="color:{c};font-weight:600">{v:+.1f}%</span>'
 
 def lod_dist_html(v):
-    """LoD Dist % ATR: jak daleko od Low of Day w jednostkach ATR%
-    Niski = blisko dołka (ryzyko), Wysoki = daleko od dołka (bezpieczniej)"""
+    """Jeff Sun: < 60% = DOBRY entry (blisko Low dnia). > 60% = ZLY entry."""
     if v is None: return '<span style="color:#7a8299">—</span>'
-    c="#e84545" if v<20 else "#f0c040" if v<50 else "#4ade80" if v<80 else "#26ff7f"
+    # < 60% = zielony (dobry), > 60% = czerwony (zly)
+    c="#26ff7f" if v<30 else "#4ade80" if v<60 else "#f0c040" if v<80 else "#e84545"
+    icon=" ✓" if v<60 else " ✗"
     bar=min(100,v)
     return (f'<div style="display:flex;align-items:center;gap:4px">'
             f'<div style="width:36px;height:4px;background:#252a3a;border-radius:2px">'
             f'<div style="width:{bar:.0f}%;height:4px;background:{c};border-radius:2px"></div></div>'
-            f'<span style="color:{c};font-size:10px;font-weight:700">{v:.0f}%</span></div>')
+            f'<span style="color:{c};font-size:10px;font-weight:700">{v:.0f}%{icon}</span></div>')
+
+def inside_day_html(v):
+    if v: return '<span style="background:#0f3320;color:#4ade80;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700">ID</span>'
+    return '<span style="color:#252a3a;font-size:9px">—</span>'
+
+def float_pct_html(v):
+    if v is None: return '<span style="color:#7a8299;font-size:10px">—</span>'
+    c="#26ff7f" if v<20 else "#f0c040" if v<50 else "#7a8299"
+    return f'<span style="color:{c};font-size:10px;font-weight:600">{v:.1f}%</span>'
+
 
 def chg_tag(v):
     if v is None: return "—"
@@ -438,14 +471,38 @@ if page == "🌍  Market Radar":
         st.session_state["sec_data"]=data
 
     raw=st.session_state["sec_data"]
-    rows=[{"name":n,
-           "etf":v["etf"],
-           "rs":v.get("rs",50),
+    rows=[{"name":n,"etf":v["etf"],"rs":v.get("rs",50),
            "c1d":v.get("c1d",0),"c3d":v.get("c3d",0),"c5d":v.get("c5d",0),
            "c20d":v.get("c20d",0),"c60d":v.get("c60d",0),"rvol":v.get("rvol",1),
+           "rs_dir":v.get("rs_dir","flat"),"abv50":v.get("abv50",0),
            "kat":SECTOR_META.get(v["etf"],{}).get("kat","branza"),
            "parent":SECTOR_META.get(v["etf"],{}).get("parent","—"),
            } for n,v in raw.items()]
+    # Breadth widgets
+    abv50_n=sum(r["abv50"] for r in rows); tot_r=max(1,len(rows)); pct50=round(abv50_n/tot_r*100)
+    rs_up=sum(1 for r in rows if r["rs_dir"]=="up")
+    rs_dn=sum(1 for r in rows if r["rs_dir"]=="dn")
+    rs_fl=sum(1 for r in rows if r["rs_dir"]=="flat")
+    bc1,bc2=st.columns(2)
+    with bc1:
+        bc=("#26ff7f" if pct50>=60 else "#f0c040" if pct50>=40 else "#e84545")
+        st.markdown(f"""<div style="background:#161920;border:1px solid #252a3a;border-radius:7px;padding:10px 14px;margin-bottom:8px">
+<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:5px">MARKET BREADTH — sektory ETF powyżej SMA50</div>
+<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px">
+  <span style="color:#26ff7f">{abv50_n} above</span>
+  <span style="font-weight:700;color:{bc}">{pct50}%</span>
+  <span style="color:#e84545">{tot_r-abv50_n} below</span>
+</div>
+<div style="height:8px;background:#252a3a;border-radius:4px"><div style="width:{pct50}%;height:8px;background:{bc};border-radius:4px"></div></div>
+</div>""",unsafe_allow_html=True)
+    with bc2:
+        st.markdown(f"""<div style="background:#161920;border:1px solid #252a3a;border-radius:7px;padding:10px 14px;margin-bottom:8px">
+<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:5px">RS LINE DIRECTION vs SPY (5D)</div>
+<div style="display:flex;gap:14px;font-size:12px;margin-top:6px">
+  <span style="color:#26ff7f;font-weight:700">↑ {rs_up}</span>
+  <span style="color:#7a8299">→ {rs_fl}</span>
+  <span style="color:#e84545;font-weight:700">↓ {rs_dn}</span>
+</div></div>""",unsafe_allow_html=True)
     # Apply category filters
     if kat_filter=="🏛️ Główne sektory S&P500": rows=[r for r in rows if r["kat"]=="sektor"]
     elif kat_filter=="🔬 Branże / Nisze": rows=[r for r in rows if r["kat"]=="branza"]
@@ -657,8 +714,14 @@ elif page == "🔬  Stock Radar":
         with f6: fadr=st.number_input("Min ADR%",0.0,20.0,0.0,0.5,key="fadr")
         with f7: fext_max=st.number_input("Max ATR Ext (0=off)",0.0,10.0,0.0,0.5,key="fext",
                                            help="Wyklucza spółki rozciągnięte powyżej tej wartości. Np. 3.0 = bez overextended")
-        with f8: flod_min=st.number_input("Min LoD Dist% (0=off)",0.0,100.0,0.0,5.0,key="flod",
-                                           help="LoD Dist = (Cena - Low dnia) / ATR × 100. Wysoka = daleko od dołka dnia. Filtruj np. ≥20% aby uniknąć spółek przy LoD")
+        with f8: flod_max=st.number_input("Max LoD Dist% (0=off)",0.0,100.0,0.0,5.0,key="flod",
+                                          help="Jeff Sun: wejście gdy LoD < 60% ATR. Wpisz 60 aby filtrować")
+        f9,f10,f11,f12=st.columns(4)
+        with f9:  favgdv=st.number_input("Min Avg$Vol (M)",0.0,500.0,0.0,5.0,key="favgdv",
+                                          help="Avg Dollar Volume 50D. Jeff Sun: min $10M")
+        with f10: finside=st.selectbox("Inside Day",["Wszystkie","Tak","Nie"],key="finside")
+        with f11: fsect=st.text_input("Sektor",key="fsect",placeholder="np. Technology").strip()
+        with f12: fshort=st.number_input("Max Short Float%",0.0,100.0,0.0,5.0,key="fshort")
 
         filtered=rows[:]
         if fcls!="Wszystkie":    filtered=[r for r in filtered if r["cls"].startswith(fcls)]
@@ -670,7 +733,12 @@ elif page == "🔬  Stock Radar":
         if frs>0:                 filtered=[r for r in filtered if r["rs"]>=frs]
         if fadr>0:                filtered=[r for r in filtered if r["adr"]>=fadr]
         if fext_max>0:            filtered=[r for r in filtered if r["atr_ext"]<=fext_max]
-        if flod_min>0:            filtered=[r for r in filtered if (r.get("lod_dist") or 0)>=flod_min]
+        if flod_max>0:            filtered=[r for r in filtered if (r.get("lod_dist") or 999)<=flod_max]
+        if favgdv>0:              filtered=[r for r in filtered if (r.get("avg_dv") or 0)>=favgdv]
+        if finside=="Tak":        filtered=[r for r in filtered if r.get("inside_day")]
+        if finside=="Nie":        filtered=[r for r in filtered if not r.get("inside_day")]
+        if fsect:                 filtered=[r for r in filtered if fsect.lower() in (r.get("sector","") or "").lower()]
+        if fshort>0:              filtered=[r for r in filtered if 0<(r.get("short_float") or 0)<=fshort]
 
         # ── SORT STATE ──
         if "stbl_sort" not in st.session_state:
@@ -712,20 +780,49 @@ elif page == "🔬  Stock Radar":
             return f'<th style="{s}">{label}</th>'
 
         all_cols=[("TICKER",None),("KLASA",None),("SCORE","score"),("SYGNAŁ",None),
-                  ("STAGE",None),("RS","rs"),("ADR%","adr"),("RVOL","rvol"),
+                  ("STAGE",None),("RS","rs"),("ADR%","adr"),("RVOL50","rvol"),
                   ("CENA $","price"),("1D%","chg1d"),("ATR EXT","atr_ext"),
-                  ("LoD Dist%","lod_dist"),("VARS",None),("R-R","rr"),
-                  ("1M%","ret1m"),("3M%","ret3m"),("52W","dist52"),
-                  ("MA CHECK",None),("VOL $M","vol_m"),("SEKTOR",None),
+                  ("LoD%","lod_dist"),("ID",None),("VARS",None),("VARS★","vars_score"),
+                  ("R-R","rr"),("1M%","ret1m"),("3M%","ret3m"),("52W","dist52"),
+                  ("MA",None),("AVG$V","avg_dv"),("FLOAT%","float_pct"),
+                  ("SHORT%","short_float"),("SEKTOR",None),
                   ("SL","sl1"),("T2","t2"),("TV",None)]
         thead="<thead><tr>"+"".join(th_s(l,k) for l,k in all_cols)+"</tr></thead>"
         body=""
         for r in filtered:
             tv=f'<a href="https://www.tradingview.com/chart/?symbol={r["ticker"]}" target="_blank" style="color:#555;font-size:11px;text-decoration:none">TV</a>'
             tk=f'<a href="https://finance.yahoo.com/quote/{r["ticker"]}" target="_blank" style="color:#6c8eff;font-weight:700;text-decoration:none;font-size:12px">{r["ticker"]}</a>'
-            sec_txt=r.get("sector","—") or "—"
-            sec_short=sec_txt[:14] if len(sec_txt)>14 else sec_txt
-            body+=f'<tr style="border-bottom:1px solid #161920"><td style="{TD}">{tk}</td><td style="{TD}">{cls_pill(r["cls"])}</td><td style="{TD}">{score_bar(r["score"])}</td><td style="{TD}">{sgn_pill(r["sign"])}</td><td style="{TD}">{stg_pill(r["stage"])}</td><td style="{TD}">{rs_bar_html(r["rs"])}</td><td style="{TD};font-weight:600">{r["adr"]:.1f}%</td><td style="{TD}">{rvol_html(r["rvol"])}</td><td style="{TD}"><strong>${r["price"]:.2f}</strong></td><td style="{TD}">{pct_html(r["chg1d"])}</td><td style="{TD}">{atr_bar_html(r["atr_ext"])}</td><td style="{TD}">{lod_dist_html(r.get("lod_dist"))}</td><td style="{TD}">{vars_html(r["vars"])}</td><td style="{TD}">{rr_html(r["rr"])}</td><td style="{TD}">{pct_html(r["ret1m"])}</td><td style="{TD}">{pct_html(r["ret3m"])}</td><td style="{TD}">{dist52_html(r["dist52"])}</td><td style="{TD}">{ma_html(r["ma_e10"],r["ma_s20"],r["ma_s50"],r["ma_s200"])}</td><td style="{TD};color:#7a8299">{r["vol_m"]:.0f}M</td><td style="{TD};color:#7a8299;font-size:10px">{sec_short}</td><td style="{TD};color:#e84545;font-size:10px">${r["sl1"]:.2f}</td><td style="{TD};color:#26a65b;font-size:10px">${r["t2"]:.2f}</td><td style="{TD}">{tv}</td></tr>'
+            sec_txt=r.get("sector","—") or "—"; sec_short=sec_txt[:12]
+            vs=r.get("vars_score",0) or 0; vs_c="#26ff7f" if vs>=8 else "#f0c040" if vs>=5 else "#7a8299"
+            avd=r.get("avg_dv") or 0; avd_c="#4ade80" if avd>=10 else "#e84545"
+            body+=(f'<tr style="border-bottom:1px solid #161920">'
+                  +f'<td style="{TD}">{tk}</td>'
+                  +f'<td style="{TD}">{cls_pill(r["cls"])}</td>'
+                  +f'<td style="{TD}">{score_bar(r["score"])}</td>'
+                  +f'<td style="{TD}">{sgn_pill(r["sign"])}</td>'
+                  +f'<td style="{TD}">{stg_pill(r["stage"])}</td>'
+                  +f'<td style="{TD}">{rs_bar_html(r["rs"])}</td>'
+                  +f'<td style="{TD};font-weight:600">{r["adr"]:.1f}%</td>'
+                  +f'<td style="{TD}">{rvol_html(r["rvol"])}</td>'
+                  +f'<td style="{TD}"><strong>${r["price"]:.2f}</strong></td>'
+                  +f'<td style="{TD}">{pct_html(r["chg1d"])}</td>'
+                  +f'<td style="{TD}">{atr_bar_html(r["atr_ext"])}</td>'
+                  +f'<td style="{TD}">{lod_dist_html(r.get("lod_dist"))}</td>'
+                  +f'<td style="{TD}">{inside_day_html(r.get("inside_day"))}</td>'
+                  +f'<td style="{TD}">{vars_html(r["vars"])}</td>'
+                  +f'<td style="{TD}"><span style="color:{vs_c};font-weight:700;font-size:10px">{vs:.1f}</span></td>'
+                  +f'<td style="{TD}">{rr_html(r["rr"])}</td>'
+                  +f'<td style="{TD}">{pct_html(r["ret1m"])}</td>'
+                  +f'<td style="{TD}">{pct_html(r["ret3m"])}</td>'
+                  +f'<td style="{TD}">{dist52_html(r["dist52"])}</td>'
+                  +f'<td style="{TD}">{ma_html(r["ma_e10"],r["ma_s20"],r["ma_s50"],r["ma_s200"])}</td>'
+                  +f'<td style="{TD};color:{avd_c};font-size:10px">{avd:.0f}M</td>'
+                  +f'<td style="{TD}">{float_pct_html(r.get("float_pct"))}</td>'
+                  +f'<td style="{TD}">{float_pct_html(r.get("short_float"))}</td>'
+                  +f'<td style="{TD};color:#7a8299;font-size:10px">{sec_short}</td>'
+                  +f'<td style="{TD};color:#e84545;font-size:10px">${r["sl1"]:.2f}</td>'
+                  +f'<td style="{TD};color:#26a65b;font-size:10px">${r["t2"]:.2f}</td>'
+                  +f'<td style="{TD}">{tv}</td></tr>')
 
         st.markdown(tbl_wrap(f'<table style="width:100%;border-collapse:collapse;min-width:1600px">{thead}<tbody>{body}</tbody></table>'),unsafe_allow_html=True)
         st.markdown("---")
@@ -742,11 +839,24 @@ elif page == "📚  Playbook":
     st.markdown("*Checklista · Kalkulator pozycji · System A-F · Wskaźniki · Stage Analysis*")
     st.markdown("---")
 
-    tab1,tab2,tab3,tab4,tab5=st.tabs(["✅ Checklista","💰 Kalkulator","🏷️ System A-F","📐 Wskaźniki","📊 Stage"])
+    tab1,tab2,tab3,tab4,tab5,tab6=st.tabs(["✅ Checklista","💰 Kalkulator","🏷️ System A-F","📐 Wskaźniki","📊 Stage","🎯 Focus List"])
 
     with tab1:
         st.markdown("### Checklista przed wejściem w pozycję")
-        checks=["SPY/QQQ powyżej SMA20","Risk-On — >50% sektorów nad SMA20","Sektor w kwadrancie STRONG lub IMPROVING","Spółka klasy A lub B (nie C/D/E/F)","Stage 2A lub 2B","ATR Extension < 1.5 (nie overextended)","VARS ≥ 4/5 (ciasna konsolidacja)","R-R ≥ 2.0 (dobry stosunek zysk/ryzyko)","Stop loss zdefiniowany przed wejściem"]
+        checks=[
+            "SPY/QQQ powyżej SMA50 (trend rynku wzrostowy)",
+            "Breadth: >60% sektorów nad SMA50 (Risk-On)",
+            "Sektor spółki w kwadrancie STRONG (RS Line rośnie ↑)",
+            "Spółka klasy A lub B (ADR > 3%, RS > 70)",
+            "Stage 2A lub 2B (Weinstein trend wzrostowy)",
+            "ATR Extension < 1.5× od SMA50 (nie overextended)",
+            "VARS 4/5 LUB Inside Day (VCP — ciasna baza)",
+            "LoD Dist < 60% ATR (wejście blisko Low dnia)",
+            "RVOL >= 1.0 na otwarciu (wolumen potwierdza ruch)",
+            "Avg $Vol >= $10M (płynność, bez slippage)",
+            "R-R >= 2.0 (min. 2x zysk do ryzyka)",
+            "Stop loss zdefiniowany PRZED wejściem",
+        ]
         if "checks" not in st.session_state: st.session_state["checks"]=[False]*len(checks)
         for i,c in enumerate(checks):
             st.session_state["checks"][i]=st.checkbox(c,value=st.session_state["checks"][i],key=f"ck_{i}")
@@ -786,14 +896,59 @@ elif page == "📚  Playbook":
             st.markdown(f'<div style="background:{bg};border-left:4px solid {fg};border-radius:8px;padding:10px 14px;margin-bottom:7px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-size:13px;font-weight:700;color:{fg}">Klasa {name}</span><span style="font-size:10px;color:{fg};background:{fg}22;padding:2px 8px;border-radius:3px">{crit}</span></div><p style="color:#b0b8cc;font-size:12px;margin:0">{desc}</p></div>',unsafe_allow_html=True)
 
     with tab4:
-        for title,body in [
-            ("ADR% — Average Daily Range","avg(|High−Low| / Close) × 100 za 20 sesji. ADR>5% = Super-Lead · 3-5% = Quality · <2.5% = Slow Mover"),
-            ("ATR Extension","(Cena − SMA50) / ATR(14). Zielony <1.0 · Żółty 1-3 · Czerwony >3.0 = Overextended. NIE kupuj powyżej 3!"),
-            ("VARS — 5 kropek ciasności","TIGHT = VARS 4/5 + ATR Ext <1.5 = cisza przed burzą. Sprawdza malejące zakresy H-L i bliskość EMA10."),
-            ("RVOL — Relative Volume","Wolumen dziś / avg 20D. Niebieski >1.5x = ponadnorma · Jasnoniebieski >2x = atak instytucji."),
-            ("Composite Score (0–100)","RS×0.4 + Stage + RVOL + VARS + R-R. Jednym spojrzeniem widzisz jakość spółki."),
-            ("R-R Ratio","(Szczyt 20D − Cena) / (Cena − EMA10). Zielony ≥2.0 · Żółty 1.5-2.0 · Czerwony <1.5"),
-        ]:
+        _inds=[
+            ("ADR% — Average Daily Range",
+             "avg(High-Low)/Close x100 za 20 sesji. ADR>5% = Super-Lead, 3-5% = Quality, <2.5% = Slow Mover. "
+             "Jeff Sun: High ADR pozwala osiagac duze zwroty przy malych pozycjach."),
+            ("ATR Extension — X x ATR od SMA50",
+             "(Cena - SMA50) / ATR(14). Podstawowy wskaznik Jeff Suna. "
+             "<1.0 = Bezpieczne, 1-2 = OK, 2-3 = Uwaga, >3.0 = Overextended - NIE KUPUJ. "
+             "Jeff Sun: Jeden wskaznik wystarczy do pierwszego miliona ze swing tradingu."),
+            ("VARS — Volatility Adjusted Relative Strength",
+             "Ulepszenie klasycznego RS przez Jeff Suna. Uwzglednia zmiennosc spolki. "
+             "VARS Score = RS x ciastosc konsolidacji. Spolka z ADR 8% i RS 85 jest lepsza od spolki z ADR 2% i RS 85. "
+             "Wskaznik TradingView: tradingview.com/script/nbgyYwu1"),
+            ("RVOL — Relative Volume (50D)",
+             "Wolumen dzis / avg 50 sesji (Jeff Sun standard, nie 20!). "
+             ">2.0x = atak instytucji, >1.5x = ponadnorma, <1.0 = brak zainteresowania. "
+             "Jeff Sun: RVOL based entry on ORH have proven statistical edge."),
+            ("LoD Dist% — Low of Day Distance",
+             "(Cena - Low dnia) / ATR x 100. "
+             "< 60% = DOBRY ENTRY (blisko Low, maly drawdown do stopu). "
+             "> 60% = zly entry (za daleko od Low). "
+             "Jeff Sun: Perks of <60% LoD Execution — klucz do ciasnych wejsc."),
+            ("Inside Day — VCP sygnal",
+             "Zakres dzis (High-Low) < zakres wczoraj. "
+             "Sygnal kompresji zmiennosci. Poprzedza wybicia (VCP). "
+             "Jeff Sun ma osobny skaner Inside Day + ADR% na TradingView. "
+             "Jeff Sun: I will NEVER enter a stock with prior loose price action."),
+            ("T+3 — Trade Management",
+             "T = dzien wejscia. T+3 = 3 sesje pozniej (bez weekendow/swiat). "
+             "Do T+3 brak ruchu = rozwazt wyjscie. "
+             "Do T+3 cena > entry + 1R = przesun SL na breakeven. "
+             "Do T+3 silny ruch = trailing EMA10."),
+            ("ORH / M30 Re-ORH",
+             "ORH = Opening Range High — szczyt z pierwszych minut sesji. "
+             "M30 Re-ORH = spolka spada ponizej ORH, ale po 30 minutach go odzyskuje. "
+             "Bardzo silny sygnal kontynuacji przy wysokim RVOL."),
+            ("PEAD — Post-Earnings Drift",
+             "Cena kontynuuje ruch w kierunku niespodzianki wynikowej przez tygodnie. "
+             "Rozni sie od EP (jednorazowy skok) — PEAD = dlugotrwaly drift. "
+             "Jeff Sun: PEAD provides traders opportunity to exploit the delayed market response."),
+            ("Float% i Short Float%",
+             "Float% = akcje w wolnym obrocie / wszystkie akcje. "
+             "Niski Float% (<20%) = kazdy duzy zakup mocno przesuwa cene. "
+             "Short Float% = ile % float jest shortowane. Wysoki (>20%) = potencjalny short squeeze. "
+             "Jeff Sun: Best % performers almost always have: low float, high short, high ADR%."),
+            ("Avg $ Volume — plynnosc",
+             "Sredni dzienny obrot w dolarach (50 sesji). "
+             "Jeff Sun stracil 6-7% equity przez slippage w 2021. "
+             "Min $10M/dzien = akceptowalna plynnosc. $50M+ = dobra. $100M+ = swietna."),
+            ("Composite Score (0-100)",
+             "RS x0.4 + Stage + RVOL + VARS + R-R. "
+             "80+ = elite setup, 60-80 = dobry, <40 = slaby."),
+        ]
+        for title,body in _inds:
             with st.expander(f"📐 {title}"):
                 st.markdown(body)
 
@@ -806,6 +961,27 @@ elif page == "📚  Playbook":
                 ("4A — Declining","#f87171","#2e0a0a","Trend spadkowy. Omijaj. Szukaj shorta lub stój z boku.")]
         for name,fg,bg,desc in stages:
             st.markdown(f'<div style="background:{bg};border-left:4px solid {fg};border-radius:8px;padding:10px 14px;margin-bottom:7px"><span style="font-size:13px;font-weight:700;color:{fg}">{name}</span><p style="color:#b0b8cc;font-size:12px;margin:5px 0 0">{desc}</p></div>',unsafe_allow_html=True)
+
+    with tab6:
+        st.markdown("### 🎯 From Watchlist to Focus List — Jeff Sun Process")
+        cols_fl=st.columns(3)
+        stages_fl=[
+            ("📋 WATCHLIST","#1e2a4a","#6c8eff",
+             ["Klasa A lub B (ADR>3%, RS>70)","Stage 2A/2B lub late 1B","Avg $Vol >= $10M","Sektor w STRONG/IMPROVING","Brak earnings w 14 dniach"]),
+            ("🎯 FOCUS LIST","#0f3320","#4ade80",
+             ["ATR Ext < 1.5x od SMA50","VARS 4/5 LUB Inside Day","LoD Dist < 60% ATR","RVOL >= 1.0","R-R >= 2.0","RS Line rośnie ↑"]),
+            ("🚀 EXECUTION","#1a0a4a","#c084fc",
+             ["Cena wybija ORH na RVOL >= 1.5x","LUB M30 Re-ORH (reclaim po 30 min)","LUB pullback do EMA10 (niski vol)","LoD Dist < 60% W MOMENCIE WEJŚCIA","Stop loss ustawiony PRZED wejściem"]),
+        ]
+        for (title,bg,fg,items),col in zip(stages_fl,cols_fl):
+            with col:
+                items_html="".join(f'<div style="font-size:11px;color:#b0b8cc;padding:3px 0;border-bottom:1px solid #252a3a22">✓ {x}</div>' for x in items)
+                st.markdown(f'<div style="background:{bg};border:1px solid {fg}44;border-top:3px solid {fg};border-radius:8px;padding:12px 14px"><div style="font-size:13px;font-weight:700;color:{fg};margin-bottom:8px">{title}</div>{items_html}</div>',unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown("""**Klucz Jeff Suna:** *"Every sustainable price expansion rally will always be preceded by a phase of price contraction/tightening. I will NEVER enter a stock with prior loose price action."*
+
+**Sekwencja:**  
+`Market Radar` → `STRONG sektor` → `Stock Radar` (A/B, VARS, LoD<60%) → `Focus List` → `ORH + RVOL` → `T+3 management`""")
 
 # ═══════════════════════════════════════════════════════════════
 # PAGE 4: WATCHLIST MANAGER
