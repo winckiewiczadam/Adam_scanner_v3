@@ -472,32 +472,49 @@ if page == "🌍  Market Radar":
 # ═══════════════════════════════════════════════════════════════
 elif page == "🔬  Stock Radar":
     st.markdown("# 🔬 Stock Radar")
-    st.markdown("*Klasyfikacja A-F · Composite Score · ATR Bar · EP Timer · RVOL*")
     st.markdown("---")
 
+    # ── IMPORT ────────────────────────────────────────────────
     st.markdown("### 📥 Importuj listę spółek")
-    imp_method=st.radio("",["✏️ Wpisz ręcznie","📁 Wgraj plik TXT/CSV","📋 Wybierz watchlistę"],horizontal=True,label_visibility="collapsed")
+    # Czytelne przyciski zamiast radio
+    if "imp_tab" not in st.session_state: st.session_state["imp_tab"]="manual"
+    ib1,ib2,ib3=st.columns(3)
+    with ib1:
+        if st.button("✏️  Wpisz ręcznie", use_container_width=True,
+                     type="primary" if st.session_state["imp_tab"]=="manual" else "secondary"):
+            st.session_state["imp_tab"]="manual"
+    with ib2:
+        if st.button("📁  Wgraj plik TXT/CSV", use_container_width=True,
+                     type="primary" if st.session_state["imp_tab"]=="file" else "secondary"):
+            st.session_state["imp_tab"]="file"
+    with ib3:
+        if st.button("📋  Wybierz watchlistę", use_container_width=True,
+                     type="primary" if st.session_state["imp_tab"]=="wl" else "secondary"):
+            st.session_state["imp_tab"]="wl"
+
     tickers=[]
-    if imp_method=="✏️ Wpisz ręcznie":
-        raw=st.text_area("Tickery",height=80,placeholder="NVDA, AMD, TSLA\nAAPL MSFT\nVAL",label_visibility="collapsed")
+    tab=st.session_state["imp_tab"]
+    if tab=="manual":
+        raw=st.text_area("Tickery — jeden per linia lub oddzielone przecinkiem",height=90,
+                         placeholder="NVDA, AMD, TSLA\nAAPL MSFT\nVAL",label_visibility="visible")
         if raw.strip(): tickers=parse_tickers(raw)
         if tickers: st.success(f"✅ {len(tickers)} tickerów: {', '.join(tickers[:8])}{'...' if len(tickers)>8 else ''}")
-    elif imp_method=="📁 Wgraj plik TXT/CSV":
-        up=st.file_uploader("Plik z tickerami",type=["txt","csv"],label_visibility="collapsed")
+    elif tab=="file":
+        up=st.file_uploader("Plik TXT lub CSV z tickerami",type=["txt","csv"],label_visibility="visible")
         if up:
             content=up.read().decode("utf-8",errors="ignore")
             tickers=parse_tickers(content)
             st.success(f"✅ {len(tickers)} tickerów z **{up.name}**")
-            with st.expander("Podgląd"): st.write("  ·  ".join(tickers))
+            with st.expander("Podgląd listy"): st.write("  ·  ".join(tickers))
     else:
         wl_names=list(all_wl().keys())
-        sel_wl=st.selectbox("Watchlista",wl_names,label_visibility="collapsed")
+        sel_wl=st.selectbox("Wybierz watchlistę",wl_names,label_visibility="visible")
         tickers=all_wl()[sel_wl]
         st.info(f"📋 **{sel_wl}** — {len(tickers)} spółek")
 
     if not tickers: tickers=list(BUILTIN_WL.values())[0]
 
-    c_run,c_log=st.columns([3,1])
+    c_run,c_log=st.columns([5,1])
     with c_run: run_scan=st.button("🚀 Uruchom skanowanie",use_container_width=True)
     with c_log: show_log=st.checkbox("Log",False)
 
@@ -516,15 +533,18 @@ elif page == "🔬  Stock Radar":
         prog.empty(); stxt.empty()
         if show_log:
             with st.expander(f"Log ({len(log)})"): st.code("\n".join(log))
-        if not results: st.error("Brak wyników — zmień filtry lub watchlistę")
+        if not results: st.error("Brak wyników — zmień watchlistę lub spróbuj ponownie")
         else:
             st.session_state["scan_results"]=results
             st.session_state["scan_time"]=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+            st.session_state["stbl_sort"]="rs"
+            st.session_state["stbl_asc"]=False
 
     if "scan_results" in st.session_state:
         rows=st.session_state["scan_results"]
         scan_time=st.session_state.get("scan_time","")
 
+        # ── STAT CARDS ──
         c1,c2,c3,c4,c5,c6=st.columns(6)
         c1.metric("Wszystkich",len(rows))
         c2.metric("A+ Super",sum(1 for r in rows if r["cls"]=="A+"))
@@ -533,42 +553,83 @@ elif page == "🔬  Stock Radar":
         c5.metric("RVOL 1.5x+",sum(1 for r in rows if r["rvol"]>=1.5))
         c6.metric("Stage 2A/B",sum(1 for r in rows if r["stage"] in ("2A","2B")))
 
-        f1,f2,f3,f4,f5=st.columns([2,2,2,2,2])
-        with f1: fcls=st.selectbox("Klasa",["Wszystkie","A+","A","B+","B","C","D","E"])
+        # ── FILTRY ──
+        st.markdown("**Filtry:**")
+        f1,f2,f3,f4,f5,f6=st.columns(6)
+        with f1: fcls=st.selectbox("Klasa",["Wszystkie","A+","A","A-","B+","B","B-","C","D","E"])
         with f2: fstg=st.selectbox("Stage",["Wszystkie","2A","2B","2C","1B","3A","4A"])
         with f3: fsgn=st.selectbox("Sygnał",["Wszystkie","+ Ready","Neutral","− Extended"])
         with f4: frvol=st.selectbox("RVOL",["Wszystkie","≥ 1.5x","≥ 2.0x"])
         with f5: frs=st.number_input("Min RS",0,99,0,key="frs")
+        with f6: fadr=st.number_input("Min ADR%",0.0,20.0,0.0,0.5,key="fadr")
 
         filtered=rows[:]
-        if fcls!="Wszystkie": filtered=[r for r in filtered if r["cls"].startswith(fcls)]
-        if fstg!="Wszystkie": filtered=[r for r in filtered if r["stage"]==fstg]
-        if fsgn=="+ Ready":   filtered=[r for r in filtered if r["sign"]=="+"]
-        if fsgn=="− Extended":filtered=[r for r in filtered if r["sign"]=="-"]
-        if frvol=="≥ 1.5x":   filtered=[r for r in filtered if r["rvol"]>=1.5]
-        if frvol=="≥ 2.0x":   filtered=[r for r in filtered if r["rvol"]>=2.0]
-        if frs>0:              filtered=[r for r in filtered if r["rs"]>=frs]
-        filtered.sort(key=lambda x:x["rs"],reverse=True)
+        if fcls!="Wszystkie":    filtered=[r for r in filtered if r["cls"].startswith(fcls)]
+        if fstg!="Wszystkie":    filtered=[r for r in filtered if r["stage"]==fstg]
+        if fsgn=="+ Ready":      filtered=[r for r in filtered if r["sign"]=="+"]
+        if fsgn=="− Extended":   filtered=[r for r in filtered if r["sign"]=="-"]
+        if frvol=="≥ 1.5x":      filtered=[r for r in filtered if r["rvol"]>=1.5]
+        if frvol=="≥ 2.0x":      filtered=[r for r in filtered if r["rvol"]>=2.0]
+        if frs>0:                 filtered=[r for r in filtered if r["rs"]>=frs]
+        if fadr>0:                filtered=[r for r in filtered if r["adr"]>=fadr]
 
-        # Sort controls for stock table
-        ss1,ss2,ss3=st.columns([3,2,2])
-        with ss1:
-            stock_sort_opts={"RS Score":"rs","Composite Score":"score","ADR%":"adr","RVOL":"rvol","Cena $":"price","Zmiana 1D%":"chg1d","ATR Extension":"atr_ext","R-R":"rr","1M%":"ret1m","3M%":"ret3m","Odl. 52W":"dist52","Vol $M":"vol_m"}
-            sel_ss=st.selectbox("Sortuj spółki wg",list(stock_sort_opts.keys()),label_visibility="collapsed")
-        with ss2:
-            ss_asc=st.toggle("Rosnąco",value=False,key="ss_asc")
-        with ss3:
-            st.caption(f"Wyświetlane: **{len(filtered)}** · skan: `{scan_time}`")
-        filtered.sort(key=lambda x:(x.get(stock_sort_opts[sel_ss]) or 0),reverse=not ss_asc)
+        # ── SORT STATE ──
+        if "stbl_sort" not in st.session_state:
+            st.session_state["stbl_sort"]="rs"; st.session_state["stbl_asc"]=False
+        sk=st.session_state["stbl_sort"]; sa=st.session_state["stbl_asc"]
+        filtered.sort(key=lambda x:(x.get(sk) or 0),reverse=not sa)
 
-        cols=["TICKER","KLASA","SCORE","SYGNAŁ","STAGE","RS","ADR%","RVOL","CENA $","1D%","ATR EXT","VARS","R-R","1M%","3M%","52W","MA CHECK","SL","T2","TV"]
-        head=f'<thead><tr>{"".join(f"<th style=\"{TH}\">{c}</th>" for c in cols)}</tr></thead>'
+        st.caption(f"Wyświetlane: **{len(filtered)}** spółek · skan: `{scan_time}` · Sortowanie: **{sk}** {'↑' if sa else '↓'} · kliknij nagłówek kolumny aby zmienić")
+
+        # ── TABELA Z KLIKALNYMI NAGŁÓWKAMI ──
+        SORT_COLS={
+            "TICKER":"ticker","KLASA":"cls","SCORE":"score","STAGE":"stage",
+            "RS":"rs","ADR%":"adr","RVOL":"rvol","CENA $":"price","1D%":"chg1d",
+            "ATR EXT":"atr_ext","R-R":"rr","1M%":"ret1m","3M%":"ret3m",
+            "52W":"dist52","VOL $M":"vol_m","SL":"sl1","T2":"t2",
+        }
+        TH_SORT=TH+";cursor:pointer"
+        TH_ACTIVE=TH+";cursor:pointer;color:#6c8eff;border-bottom:2px solid #6c8eff"
+
+        def th(label):
+            key=SORT_COLS.get(label)
+            if not key: return f'<th style="{TH}">{label}</th>'
+            active=(sk==key)
+            arrow=" ↓" if active and not sa else (" ↑" if active and sa else "")
+            style=TH_ACTIVE if active else TH_SORT
+            return f'<th style="{style}" onclick="sortBy(\'{key}\')">{label}{arrow}</th>'
+
+        # JavaScript sort handler — sends query param to trigger rerun
+        sort_js="""
+<script>
+function sortBy(key){
+    const url=new URL(window.location.href);
+    url.searchParams.set('_sort',key);
+    window.location.href=url.toString();
+}
+</script>"""
+
+        # Check if sort param in query
+        qp=st.query_params
+        if "_sort" in qp:
+            new_key=qp["_sort"]
+            if new_key==st.session_state.get("stbl_sort"):
+                st.session_state["stbl_asc"]=not st.session_state.get("stbl_asc",False)
+            else:
+                st.session_state["stbl_sort"]=new_key
+                st.session_state["stbl_asc"]=False
+            del st.query_params["_sort"]
+            st.rerun()
+
+        all_cols=["TICKER","KLASA","SCORE","SYGNAŁ","STAGE","RS","ADR%","RVOL","CENA $","1D%","ATR EXT","VARS","R-R","1M%","3M%","52W","MA CHECK","VOL $M","SL","T2","TV"]
+        thead="<thead><tr>"+"".join(th(c) for c in all_cols)+"</tr></thead>"
         body=""
         for r in filtered:
             tv=f'<a href="https://www.tradingview.com/chart/?symbol={r["ticker"]}" target="_blank" style="color:#555;font-size:11px;text-decoration:none">TV</a>'
             tk=f'<a href="https://finance.yahoo.com/quote/{r["ticker"]}" target="_blank" style="color:#6c8eff;font-weight:700;text-decoration:none;font-size:12px">{r["ticker"]}</a>'
-            body+=f'<tr style="border-bottom:1px solid #161920"><td style="{TD}">{tk}</td><td style="{TD}">{cls_pill(r["cls"])}</td><td style="{TD}">{score_bar(r["score"])}</td><td style="{TD}">{sgn_pill(r["sign"])}</td><td style="{TD}">{stg_pill(r["stage"])}</td><td style="{TD}">{rs_bar_html(r["rs"])}</td><td style="{TD};font-weight:600">{r["adr"]:.1f}%</td><td style="{TD}">{rvol_html(r["rvol"])}</td><td style="{TD}"><strong>${r["price"]:.2f}</strong></td><td style="{TD}">{pct_html(r["chg1d"])}</td><td style="{TD}">{atr_bar_html(r["atr_ext"])}</td><td style="{TD}">{vars_html(r["vars"])}</td><td style="{TD}">{rr_html(r["rr"])}</td><td style="{TD}">{pct_html(r["ret1m"])}</td><td style="{TD}">{pct_html(r["ret3m"])}</td><td style="{TD}">{dist52_html(r["dist52"])}</td><td style="{TD}">{ma_html(r["ma_e10"],r["ma_s20"],r["ma_s50"],r["ma_s200"])}</td><td style="{TD};color:#e84545;font-size:10px">${r["sl1"]:.2f}</td><td style="{TD};color:#26a65b;font-size:10px">${r["t2"]:.2f}</td><td style="{TD}">{tv}</td></tr>'
-        st.markdown(tbl_wrap(f'<table style="width:100%;border-collapse:collapse;min-width:1500px"><thead>{head}</thead><tbody>{body}</tbody></table>'),unsafe_allow_html=True)
+            body+=f'<tr style="border-bottom:1px solid #161920"><td style="{TD}">{tk}</td><td style="{TD}">{cls_pill(r["cls"])}</td><td style="{TD}">{score_bar(r["score"])}</td><td style="{TD}">{sgn_pill(r["sign"])}</td><td style="{TD}">{stg_pill(r["stage"])}</td><td style="{TD}">{rs_bar_html(r["rs"])}</td><td style="{TD};font-weight:600">{r["adr"]:.1f}%</td><td style="{TD}">{rvol_html(r["rvol"])}</td><td style="{TD}"><strong>${r["price"]:.2f}</strong></td><td style="{TD}">{pct_html(r["chg1d"])}</td><td style="{TD}">{atr_bar_html(r["atr_ext"])}</td><td style="{TD}">{vars_html(r["vars"])}</td><td style="{TD}">{rr_html(r["rr"])}</td><td style="{TD}">{pct_html(r["ret1m"])}</td><td style="{TD}">{pct_html(r["ret3m"])}</td><td style="{TD}">{dist52_html(r["dist52"])}</td><td style="{TD}">{ma_html(r["ma_e10"],r["ma_s20"],r["ma_s50"],r["ma_s200"])}</td><td style="{TD};color:#7a8299">{r["vol_m"]:.0f}M</td><td style="{TD};color:#e84545;font-size:10px">${r["sl1"]:.2f}</td><td style="{TD};color:#26a65b;font-size:10px">${r["t2"]:.2f}</td><td style="{TD}">{tv}</td></tr>'
+
+        st.markdown(sort_js+tbl_wrap(f'<table style="width:100%;border-collapse:collapse;min-width:1600px">{thead}<tbody>{body}</tbody></table>'),unsafe_allow_html=True)
         st.markdown("---")
         csv=pd.DataFrame(filtered).to_csv(index=False).encode("utf-8")
         st.download_button("⬇️ Eksportuj CSV",csv,f"scan_{datetime.date.today()}.csv","text/csv")
