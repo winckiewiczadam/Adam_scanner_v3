@@ -231,10 +231,20 @@ def get_stock(ticker):
         sign=classify_sign(ext,vars_v,rr)
         sc=comp_score(rs,stage,rv,vars_v,rr)
         def rn(n): return round((p/float(c.iloc[-n])-1)*100,1) if len(c)>n else None
+        # LoD dist: (price - low_of_day) / ATR  — jak daleko od dołka dnia
+        low_today=float(l.iloc[-1])
+        lod_dist=round((p-low_today)/atr_v*100,1) if atr_v>0 else 0.0
+        # Sector lookup
+        try:
+            yf_info=yf.Ticker(ticker).fast_info
+            sec_name=getattr(yf_info,"sector",None) or "—"
+        except: sec_name="—"
         return dict(ticker=ticker,cls=cls,sign=sign,stage=stage,rs=rs,adr=adr,rvol=rv,
                     price=round(p,2),chg1d=safe_pct(c,2),atr_ext=ext,vars=vars_v,rr=rr,
                     score=sc,ret1m=rn(21),ret3m=rn(63),vol_m=vol_m,
                     dist52=round((p/h52-1)*100,1),
+                    lod_dist=lod_dist,
+                    sector=sec_name,
                     ma_e10=(p>=e10),ma_s20=(p>=e20),ma_s50=(p>=s50),ma_s200=(p>=s200),
                     sl1=round(p-atr_v,2),sl2=round(p-2*atr_v,2),
                     t1=round(p+2*atr_v,2),t2=round(p+3*atr_v,2))
@@ -327,6 +337,17 @@ def ma_html(me10,ms20,ms50,ms200):
 def dist52_html(v):
     c="#26ff7f" if v>=-5 else "#f0c040" if v>=-15 else "#fb923c" if v>=-30 else "#e84545"
     return f'<span style="color:{c};font-weight:600">{v:+.1f}%</span>'
+
+def lod_dist_html(v):
+    """LoD Dist % ATR: jak daleko od Low of Day w jednostkach ATR%
+    Niski = blisko dołka (ryzyko), Wysoki = daleko od dołka (bezpieczniej)"""
+    if v is None: return '<span style="color:#7a8299">—</span>'
+    c="#e84545" if v<20 else "#f0c040" if v<50 else "#4ade80" if v<80 else "#26ff7f"
+    bar=min(100,v)
+    return (f'<div style="display:flex;align-items:center;gap:4px">'
+            f'<div style="width:36px;height:4px;background:#252a3a;border-radius:2px">'
+            f'<div style="width:{bar:.0f}%;height:4px;background:{c};border-radius:2px"></div></div>'
+            f'<span style="color:{c};font-size:10px;font-weight:700">{v:.0f}%</span></div>')
 
 def chg_tag(v):
     if v is None: return "—"
@@ -579,7 +600,7 @@ elif page == "🔬  Stock Radar":
         wl_names=list(all_wl().keys())
         sel_wl=st.selectbox("Wybierz watchlistę",wl_names,label_visibility="visible")
         tickers=all_wl()[sel_wl]
-        st.info(f"📋 **{sel_wl}** — {len(tickers)} spółek")
+        st.caption(f"📋 {len(tickers)} spółek w {sel_wl}")
 
     if not tickers: tickers=list(BUILTIN_WL.values())[0]
 
@@ -624,13 +645,20 @@ elif page == "🔬  Stock Radar":
 
         # ── FILTRY ──
         st.markdown("**Filtry:**")
-        f1,f2,f3,f4,f5,f6=st.columns(6)
+        # Row 1 filters
+        f1,f2,f3,f4=st.columns(4)
         with f1: fcls=st.selectbox("Klasa",["Wszystkie","A+","A","A-","B+","B","B-","C","D","E"])
         with f2: fstg=st.selectbox("Stage",["Wszystkie","2A","2B","2C","1B","3A","4A"])
         with f3: fsgn=st.selectbox("Sygnał",["Wszystkie","+ Ready","Neutral","− Extended"])
         with f4: frvol=st.selectbox("RVOL",["Wszystkie","≥ 1.5x","≥ 2.0x"])
+        # Row 2 filters
+        f5,f6,f7,f8=st.columns(4)
         with f5: frs=st.number_input("Min RS",0,99,0,key="frs")
         with f6: fadr=st.number_input("Min ADR%",0.0,20.0,0.0,0.5,key="fadr")
+        with f7: fext_max=st.number_input("Max ATR Ext (0=off)",0.0,10.0,0.0,0.5,key="fext",
+                                           help="Wyklucza spółki rozciągnięte powyżej tej wartości. Np. 3.0 = bez overextended")
+        with f8: flod_min=st.number_input("Min LoD Dist% (0=off)",0.0,100.0,0.0,5.0,key="flod",
+                                           help="LoD Dist = (Cena - Low dnia) / ATR × 100. Wysoka = daleko od dołka dnia. Filtruj np. ≥20% aby uniknąć spółek przy LoD")
 
         filtered=rows[:]
         if fcls!="Wszystkie":    filtered=[r for r in filtered if r["cls"].startswith(fcls)]
@@ -641,6 +669,8 @@ elif page == "🔬  Stock Radar":
         if frvol=="≥ 2.0x":      filtered=[r for r in filtered if r["rvol"]>=2.0]
         if frs>0:                 filtered=[r for r in filtered if r["rs"]>=frs]
         if fadr>0:                filtered=[r for r in filtered if r["adr"]>=fadr]
+        if fext_max>0:            filtered=[r for r in filtered if r["atr_ext"]<=fext_max]
+        if flod_min>0:            filtered=[r for r in filtered if (r.get("lod_dist") or 0)>=flod_min]
 
         # ── SORT STATE ──
         if "stbl_sort" not in st.session_state:
@@ -684,15 +714,18 @@ elif page == "🔬  Stock Radar":
         all_cols=[("TICKER",None),("KLASA",None),("SCORE","score"),("SYGNAŁ",None),
                   ("STAGE",None),("RS","rs"),("ADR%","adr"),("RVOL","rvol"),
                   ("CENA $","price"),("1D%","chg1d"),("ATR EXT","atr_ext"),
-                  ("VARS",None),("R-R","rr"),("1M%","ret1m"),("3M%","ret3m"),
-                  ("52W","dist52"),("MA CHECK",None),("VOL $M","vol_m"),
+                  ("LoD Dist%","lod_dist"),("VARS",None),("R-R","rr"),
+                  ("1M%","ret1m"),("3M%","ret3m"),("52W","dist52"),
+                  ("MA CHECK",None),("VOL $M","vol_m"),("SEKTOR",None),
                   ("SL","sl1"),("T2","t2"),("TV",None)]
         thead="<thead><tr>"+"".join(th_s(l,k) for l,k in all_cols)+"</tr></thead>"
         body=""
         for r in filtered:
             tv=f'<a href="https://www.tradingview.com/chart/?symbol={r["ticker"]}" target="_blank" style="color:#555;font-size:11px;text-decoration:none">TV</a>'
             tk=f'<a href="https://finance.yahoo.com/quote/{r["ticker"]}" target="_blank" style="color:#6c8eff;font-weight:700;text-decoration:none;font-size:12px">{r["ticker"]}</a>'
-            body+=f'<tr style="border-bottom:1px solid #161920"><td style="{TD}">{tk}</td><td style="{TD}">{cls_pill(r["cls"])}</td><td style="{TD}">{score_bar(r["score"])}</td><td style="{TD}">{sgn_pill(r["sign"])}</td><td style="{TD}">{stg_pill(r["stage"])}</td><td style="{TD}">{rs_bar_html(r["rs"])}</td><td style="{TD};font-weight:600">{r["adr"]:.1f}%</td><td style="{TD}">{rvol_html(r["rvol"])}</td><td style="{TD}"><strong>${r["price"]:.2f}</strong></td><td style="{TD}">{pct_html(r["chg1d"])}</td><td style="{TD}">{atr_bar_html(r["atr_ext"])}</td><td style="{TD}">{vars_html(r["vars"])}</td><td style="{TD}">{rr_html(r["rr"])}</td><td style="{TD}">{pct_html(r["ret1m"])}</td><td style="{TD}">{pct_html(r["ret3m"])}</td><td style="{TD}">{dist52_html(r["dist52"])}</td><td style="{TD}">{ma_html(r["ma_e10"],r["ma_s20"],r["ma_s50"],r["ma_s200"])}</td><td style="{TD};color:#7a8299">{r["vol_m"]:.0f}M</td><td style="{TD};color:#e84545;font-size:10px">${r["sl1"]:.2f}</td><td style="{TD};color:#26a65b;font-size:10px">${r["t2"]:.2f}</td><td style="{TD}">{tv}</td></tr>'
+            sec_txt=r.get("sector","—") or "—"
+            sec_short=sec_txt[:14] if len(sec_txt)>14 else sec_txt
+            body+=f'<tr style="border-bottom:1px solid #161920"><td style="{TD}">{tk}</td><td style="{TD}">{cls_pill(r["cls"])}</td><td style="{TD}">{score_bar(r["score"])}</td><td style="{TD}">{sgn_pill(r["sign"])}</td><td style="{TD}">{stg_pill(r["stage"])}</td><td style="{TD}">{rs_bar_html(r["rs"])}</td><td style="{TD};font-weight:600">{r["adr"]:.1f}%</td><td style="{TD}">{rvol_html(r["rvol"])}</td><td style="{TD}"><strong>${r["price"]:.2f}</strong></td><td style="{TD}">{pct_html(r["chg1d"])}</td><td style="{TD}">{atr_bar_html(r["atr_ext"])}</td><td style="{TD}">{lod_dist_html(r.get("lod_dist"))}</td><td style="{TD}">{vars_html(r["vars"])}</td><td style="{TD}">{rr_html(r["rr"])}</td><td style="{TD}">{pct_html(r["ret1m"])}</td><td style="{TD}">{pct_html(r["ret3m"])}</td><td style="{TD}">{dist52_html(r["dist52"])}</td><td style="{TD}">{ma_html(r["ma_e10"],r["ma_s20"],r["ma_s50"],r["ma_s200"])}</td><td style="{TD};color:#7a8299">{r["vol_m"]:.0f}M</td><td style="{TD};color:#7a8299;font-size:10px">{sec_short}</td><td style="{TD};color:#e84545;font-size:10px">${r["sl1"]:.2f}</td><td style="{TD};color:#26a65b;font-size:10px">${r["t2"]:.2f}</td><td style="{TD}">{tv}</td></tr>'
 
         st.markdown(tbl_wrap(f'<table style="width:100%;border-collapse:collapse;min-width:1600px">{thead}<tbody>{body}</tbody></table>'),unsafe_allow_html=True)
         st.markdown("---")
