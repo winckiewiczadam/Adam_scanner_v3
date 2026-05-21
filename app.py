@@ -47,25 +47,79 @@ div[data-testid="stFileUploader"]{background:#1e2230!important;border:1px solid 
 # ═══════════════════════════════════════════════════════════════
 # DATA
 # ═══════════════════════════════════════════════════════════════
-SECTORS = [
-    ("Półprzewodniki","SOXX"),("Cyberbezpieczeństwo","CIBR"),("Technologia","XLK"),
-    ("Motoryzacja","CARZ"),("Energia Odnawialna","ICLN"),("Ochrona Zdrowia","IHF"),
-    ("Oprogramowanie","IGV"),("Usługi Naftowe","OIH"),("Ropa i Gaz","XLE"),
-    ("Internet i Media","FDN"),("Surowce","DJP"),("Metale Szlachetne","DBB"),
-    ("Ropa i Gaz E&P","XOP"),("Telekomunikacja","IYZ"),("Nieruchomości","XLRE"),
-    ("Energia Słoneczna","TAN"),("Górnicy / Metale","PICK"),("REIT","VNQ"),
-    ("Transport i Logistyka","IYT"),("Lit i Baterie","LIT"),("Biotechnologia","XBI"),
-    ("Dobra Podstawowe","XLP"),("Stal","SLX"),("Ubezpieczenia","KIE"),
-    ("AI i Robotyka","ROBT"),("Kasyna i Hazard","BETZ"),("Dobra Uznaniowe","XLY"),
-    ("Chmura Obliczeniowa","WCLD"),("Bankowość","KBE"),("Usługi Biznesowe","VFH"),
-    ("Rynki Wschodzące","EEM"),("Finanse","XLF"),("Genomika","ARKG"),
-    ("Komunikacja","XLC"),("Małe Spółki","IWM"),("Przemysł","XLI"),
-    ("Użytk. Publiczna","XLU"),("Farmacja","PPH"),("Fintech","FINX"),
-    ("Podróże i Hotele","PEJ"),("Żywność","MOO"),("Materiały","XLB"),
-    ("Infrastruktura","PAVE"),("Lotnictwo i Obrona","ITA"),("Detaliczny","XRT"),
-    ("Linie Lotnicze","JETS"),("Górnictwo Złoto","GDX"),("Budownictwo","XHB"),
-    ("Urządzenia Medyczne","IHI"),("Energia Uran","URA"),("Data Center","SRVR"),
+# SECTORS: (nazwa, ETF, kategoria, sektor_matka)
+# kategoria: "sektor" = główny sektor S&P500 GICS, "branza" = branża/nisza
+SECTORS_DATA = [
+    # ── GŁÓWNE SEKTORY S&P500 (GICS) ──────────────────────────
+    ("Technologia",           "XLK",  "sektor",  "Technologia"),
+    ("Finanse",               "XLF",  "sektor",  "Finanse"),
+    ("Ochrona Zdrowia",       "XLV",  "sektor",  "Ochrona Zdrowia"),
+    ("Dobra Uznaniowe",       "XLY",  "sektor",  "Dobra Uznaniowe"),
+    ("Dobra Podstawowe",      "XLP",  "sektor",  "Dobra Podstawowe"),
+    ("Energetyka",            "XLE",  "sektor",  "Energetyka"),
+    ("Przemysł",              "XLI",  "sektor",  "Przemysł"),
+    ("Usługi Komunikacyjne",  "XLC",  "sektor",  "Komunikacja"),
+    ("Surowce (sektor)",      "XLB",  "sektor",  "Surowce"),
+    ("Nieruchomości",         "XLRE", "sektor",  "Nieruchomości"),
+    ("Użytk. Publiczna",      "XLU",  "sektor",  "Użyteczność"),
+    # ── BRANŻE / NISZE ─────────────────────────────────────────
+    # Technologia
+    ("Półprzewodniki",        "SOXX", "branza",  "Technologia"),
+    ("Cyberbezpieczeństwo",   "CIBR", "branza",  "Technologia"),
+    ("Oprogramowanie",        "IGV",  "branza",  "Technologia"),
+    ("AI i Robotyka",         "ROBT", "branza",  "Technologia"),
+    ("Chmura Obliczeniowa",   "WCLD", "branza",  "Technologia"),
+    ("Internet i Media",      "FDN",  "branza",  "Technologia"),
+    ("Fintech",               "FINX", "branza",  "Technologia"),
+    ("Data Center REIT",      "SRVR", "branza",  "Technologia"),
+    # Energetyka
+    ("Ropa i Gaz",            "XLE",  "branza",  "Energetyka"),
+    ("Ropa i Gaz E&P",        "XOP",  "branza",  "Energetyka"),
+    ("Usługi Naftowe",        "OIH",  "branza",  "Energetyka"),
+    ("Energia Odnawialna",    "ICLN", "branza",  "Energetyka"),
+    ("Energia Słoneczna",     "TAN",  "branza",  "Energetyka"),
+    ("Energia Uran",          "URA",  "branza",  "Energetyka"),
+    ("Lit i Baterie",         "LIT",  "branza",  "Energetyka"),
+    # Finanse
+    ("Bankowość",             "KBE",  "branza",  "Finanse"),
+    ("Ubezpieczenia",         "KIE",  "branza",  "Finanse"),
+    ("Usługi Biznesowe",      "VFH",  "branza",  "Finanse"),
+    ("Kasyna i Hazard",       "BETZ", "branza",  "Finanse"),
+    # Ochrona Zdrowia
+    ("Biotechnologia",        "XBI",  "branza",  "Ochrona Zdrowia"),
+    ("Urządzenia Medyczne",   "IHI",  "branza",  "Ochrona Zdrowia"),
+    ("Farmacja",              "PPH",  "branza",  "Ochrona Zdrowia"),
+    ("Genomika",              "ARKG", "branza",  "Ochrona Zdrowia"),
+    # Przemysł
+    ("Transport i Logistyka", "IYT",  "branza",  "Przemysł"),
+    ("Lotnictwo i Obrona",    "ITA",  "branza",  "Przemysł"),
+    ("Infrastruktura",        "PAVE", "branza",  "Przemysł"),
+    ("Motoryzacja",           "CARZ", "branza",  "Przemysł"),
+    # Surowce / Materiały
+    ("Surowce",               "DJP",  "branza",  "Surowce"),
+    ("Metale Szlachetne",     "DBB",  "branza",  "Surowce"),
+    ("Górnicy / Metale",      "PICK", "branza",  "Surowce"),
+    ("Stal",                  "SLX",  "branza",  "Surowce"),
+    ("Górnictwo Złoto",       "GDX",  "branza",  "Surowce"),
+    # Nieruchomości
+    ("REIT",                  "VNQ",  "branza",  "Nieruchomości"),
+    # Dobra Uznaniowe / Podstawowe
+    ("Detaliczny",            "XRT",  "branza",  "Dobra Uznaniowe"),
+    ("Budownictwo",           "XHB",  "branza",  "Dobra Uznaniowe"),
+    ("Podróże i Hotele",      "PEJ",  "branza",  "Dobra Uznaniowe"),
+    ("Żywność",               "MOO",  "branza",  "Dobra Podstawowe"),
+    # Komunikacja
+    ("Telekomunikacja",       "IYZ",  "branza",  "Komunikacja"),
+    ("Linie Lotnicze",        "JETS", "branza",  "Komunikacja"),
+    # Inne
+    ("Małe Spółki",           "IWM",  "branza",  "Rynek"),
+    ("Rynki Wschodzące",      "EEM",  "branza",  "Rynek"),
+    ("Materiały",             "XLB",  "branza",  "Surowce"),
 ]
+# Backward-compatible tuple for fetch loops
+SECTORS = [(n,e) for n,e,_,__ in SECTORS_DATA]
+SECTOR_META = {e:{"name":n,"kat":k,"parent":p} for n,e,k,p in SECTORS_DATA}
+
 
 BUILTIN_WL = {
     "🔥 Qullamaggie Top 50":["VAL","RIG","PTEN","NE","NBR","HP","NVDA","ARM","AVGO","AMD","ALAB","SMCI","PLTR","NOW","DDOG","RKLB","BKSY","ASTS","CELH","INSP","TMDX","AXON","COIN","MARA","WOLF","COCO","LQDA","ON","DECK","SKX","HWM","LHX","KTOS","LUNR","HIMS","DUOL","SOUN","IONQ","ACHR","JOBY"],
@@ -341,8 +395,14 @@ if page == "🌍  Market Radar":
     st.markdown("*Ranking 51 sektorów — RS Score, zmiany %, RVOL, Quadrant Chart*")
     st.markdown("---")
 
-    run_sec=st.button("🔄 Odśwież dane sektorów")
-    if run_sec: st.cache_data.clear()
+    sc_f1,sc_f2,sc_f3=st.columns([2,2,2])
+    with sc_f1:
+        run_sec=st.button("🔄 Odśwież dane sektorów")
+        if run_sec: st.cache_data.clear()
+    with sc_f2:
+        kat_filter=st.selectbox("Kategoria",["Wszystkie","🏛️ Główne sektory S&P500","🔬 Branże / Nisze"],label_visibility="visible")
+    with sc_f3:
+        parent_filter=st.selectbox("Sektor-matka",["Wszystkie","Technologia","Finanse","Ochrona Zdrowia","Energetyka","Przemysł","Surowce","Komunikacja","Dobra Uznaniowe","Dobra Podstawowe","Nieruchomości","Użyteczność","Rynek"],label_visibility="visible")
 
     if "sec_data" not in st.session_state or run_sec:
         prog=st.progress(0); txt=st.empty()
@@ -357,9 +417,18 @@ if page == "🌍  Market Radar":
         st.session_state["sec_data"]=data
 
     raw=st.session_state["sec_data"]
-    rows=[{"name":n,"etf":v["etf"],"rs":v.get("rs",50),"c1d":v.get("c1d",0),
-           "c3d":v.get("c3d",0),"c5d":v.get("c5d",0),"c20d":v.get("c20d",0),
-           "c60d":v.get("c60d",0),"rvol":v.get("rvol",1)} for n,v in raw.items()]
+    rows=[{"name":n,
+           "etf":v["etf"],
+           "rs":v.get("rs",50),
+           "c1d":v.get("c1d",0),"c3d":v.get("c3d",0),"c5d":v.get("c5d",0),
+           "c20d":v.get("c20d",0),"c60d":v.get("c60d",0),"rvol":v.get("rvol",1),
+           "kat":SECTOR_META.get(v["etf"],{}).get("kat","branza"),
+           "parent":SECTOR_META.get(v["etf"],{}).get("parent","—"),
+           } for n,v in raw.items()]
+    # Apply category filters
+    if kat_filter=="🏛️ Główne sektory S&P500": rows=[r for r in rows if r["kat"]=="sektor"]
+    elif kat_filter=="🔬 Branże / Nisze": rows=[r for r in rows if r["kat"]=="branza"]
+    if parent_filter!="Wszystkie": rows=[r for r in rows if r["parent"]==parent_filter]
     # default sort by RS
     if "sec_sort" not in st.session_state:
         st.session_state["sec_sort"]="rs"
@@ -477,20 +546,20 @@ elif page == "🔬  Stock Radar":
     # ── IMPORT ────────────────────────────────────────────────
     st.markdown("### 📥 Importuj listę spółek")
     # Czytelne przyciski zamiast radio
-    if "imp_tab" not in st.session_state: st.session_state["imp_tab"]="manual"
+    if "imp_tab" not in st.session_state: st.session_state["imp_tab"]="wl"
     ib1,ib2,ib3=st.columns(3)
     with ib1:
-        if st.button("✏️  Wpisz ręcznie", use_container_width=True,
-                     type="primary" if st.session_state["imp_tab"]=="manual" else "secondary"):
-            st.session_state["imp_tab"]="manual"
-    with ib2:
-        if st.button("📁  Wgraj plik TXT/CSV", use_container_width=True,
-                     type="primary" if st.session_state["imp_tab"]=="file" else "secondary"):
-            st.session_state["imp_tab"]="file"
-    with ib3:
         if st.button("📋  Wybierz watchlistę", use_container_width=True,
                      type="primary" if st.session_state["imp_tab"]=="wl" else "secondary"):
             st.session_state["imp_tab"]="wl"
+    with ib2:
+        if st.button("✏️  Wpisz ręcznie", use_container_width=True,
+                     type="primary" if st.session_state["imp_tab"]=="manual" else "secondary"):
+            st.session_state["imp_tab"]="manual"
+    with ib3:
+        if st.button("📁  Wgraj plik TXT/CSV", use_container_width=True,
+                     type="primary" if st.session_state["imp_tab"]=="file" else "secondary"):
+            st.session_state["imp_tab"]="file"
 
     tickers=[]
     tab=st.session_state["imp_tab"]
@@ -581,55 +650,51 @@ elif page == "🔬  Stock Radar":
 
         st.caption(f"Wyświetlane: **{len(filtered)}** spółek · skan: `{scan_time}` · Sortowanie: **{sk}** {'↑' if sa else '↓'} · kliknij nagłówek kolumny aby zmienić")
 
-        # ── TABELA Z KLIKALNYMI NAGŁÓWKAMI ──
-        SORT_COLS={
-            "TICKER":"ticker","KLASA":"cls","SCORE":"score","STAGE":"stage",
-            "RS":"rs","ADR%":"adr","RVOL":"rvol","CENA $":"price","1D%":"chg1d",
-            "ATR EXT":"atr_ext","R-R":"rr","1M%":"ret1m","3M%":"ret3m",
-            "52W":"dist52","VOL $M":"vol_m","SL":"sl1","T2":"t2",
+        # ── SORTOWANIE — przyciski nad tabelą ──
+        SORT_MAP={
+            "RS ▼":"rs","Score":"score","ADR%":"adr","RVOL":"rvol",
+            "Cena":"price","1D%":"chg1d","ATR Ext":"atr_ext","R-R":"rr",
+            "1M%":"ret1m","3M%":"ret3m","52W":"dist52","Vol $M":"vol_m",
         }
-        TH_SORT=TH+";cursor:pointer"
-        TH_ACTIVE=TH+";cursor:pointer;color:#6c8eff;border-bottom:2px solid #6c8eff"
+        srt_cols=st.columns(len(SORT_MAP)+1)
+        for i,(lbl,key) in enumerate(SORT_MAP.items()):
+            with srt_cols[i]:
+                active=(sk==key)
+                arrow=(" ↑" if sa else " ↓") if active else ""
+                if st.button(f"{lbl}{arrow}",key=f"srt_{key}",
+                             use_container_width=True,
+                             type="primary" if active else "secondary"):
+                    if sk==key: st.session_state["stbl_asc"]=not sa
+                    else: st.session_state["stbl_sort"]=key; st.session_state["stbl_asc"]=False
+                    st.rerun()
+        with srt_cols[-1]:
+            st.caption(f"{len(filtered)} spółek")
 
-        def th(label):
-            key=SORT_COLS.get(label)
-            if not key: return f'<th style="{TH}">{label}</th>'
-            active=(sk==key)
-            arrow=" ↓" if active and not sa else (" ↑" if active and sa else "")
-            style=TH_ACTIVE if active else TH_SORT
-            return f'<th style="{style}" onclick="sortBy(\'{key}\')">{label}{arrow}</th>'
+        # Re-sort after button click
+        sk=st.session_state.get("stbl_sort","rs")
+        sa=st.session_state.get("stbl_asc",False)
+        filtered.sort(key=lambda x:(x.get(sk) or 0),reverse=not sa)
 
-        # JavaScript sort handler — sends query param to trigger rerun
-        sort_js="""
-<script>
-function sortBy(key){
-    const url=new URL(window.location.href);
-    url.searchParams.set('_sort',key);
-    window.location.href=url.toString();
-}
-</script>"""
+        # ── TABELA ──
+        TH_A=TH+";color:#6c8eff;border-bottom:2px solid #6c8eff"
+        def th_s(label,key=None):
+            s=TH_A if key and sk==key else TH
+            return f'<th style="{s}">{label}</th>'
 
-        # Check if sort param in query
-        qp=st.query_params
-        if "_sort" in qp:
-            new_key=qp["_sort"]
-            if new_key==st.session_state.get("stbl_sort"):
-                st.session_state["stbl_asc"]=not st.session_state.get("stbl_asc",False)
-            else:
-                st.session_state["stbl_sort"]=new_key
-                st.session_state["stbl_asc"]=False
-            del st.query_params["_sort"]
-            st.rerun()
-
-        all_cols=["TICKER","KLASA","SCORE","SYGNAŁ","STAGE","RS","ADR%","RVOL","CENA $","1D%","ATR EXT","VARS","R-R","1M%","3M%","52W","MA CHECK","VOL $M","SL","T2","TV"]
-        thead="<thead><tr>"+"".join(th(c) for c in all_cols)+"</tr></thead>"
+        all_cols=[("TICKER",None),("KLASA",None),("SCORE","score"),("SYGNAŁ",None),
+                  ("STAGE",None),("RS","rs"),("ADR%","adr"),("RVOL","rvol"),
+                  ("CENA $","price"),("1D%","chg1d"),("ATR EXT","atr_ext"),
+                  ("VARS",None),("R-R","rr"),("1M%","ret1m"),("3M%","ret3m"),
+                  ("52W","dist52"),("MA CHECK",None),("VOL $M","vol_m"),
+                  ("SL","sl1"),("T2","t2"),("TV",None)]
+        thead="<thead><tr>"+"".join(th_s(l,k) for l,k in all_cols)+"</tr></thead>"
         body=""
         for r in filtered:
             tv=f'<a href="https://www.tradingview.com/chart/?symbol={r["ticker"]}" target="_blank" style="color:#555;font-size:11px;text-decoration:none">TV</a>'
             tk=f'<a href="https://finance.yahoo.com/quote/{r["ticker"]}" target="_blank" style="color:#6c8eff;font-weight:700;text-decoration:none;font-size:12px">{r["ticker"]}</a>'
             body+=f'<tr style="border-bottom:1px solid #161920"><td style="{TD}">{tk}</td><td style="{TD}">{cls_pill(r["cls"])}</td><td style="{TD}">{score_bar(r["score"])}</td><td style="{TD}">{sgn_pill(r["sign"])}</td><td style="{TD}">{stg_pill(r["stage"])}</td><td style="{TD}">{rs_bar_html(r["rs"])}</td><td style="{TD};font-weight:600">{r["adr"]:.1f}%</td><td style="{TD}">{rvol_html(r["rvol"])}</td><td style="{TD}"><strong>${r["price"]:.2f}</strong></td><td style="{TD}">{pct_html(r["chg1d"])}</td><td style="{TD}">{atr_bar_html(r["atr_ext"])}</td><td style="{TD}">{vars_html(r["vars"])}</td><td style="{TD}">{rr_html(r["rr"])}</td><td style="{TD}">{pct_html(r["ret1m"])}</td><td style="{TD}">{pct_html(r["ret3m"])}</td><td style="{TD}">{dist52_html(r["dist52"])}</td><td style="{TD}">{ma_html(r["ma_e10"],r["ma_s20"],r["ma_s50"],r["ma_s200"])}</td><td style="{TD};color:#7a8299">{r["vol_m"]:.0f}M</td><td style="{TD};color:#e84545;font-size:10px">${r["sl1"]:.2f}</td><td style="{TD};color:#26a65b;font-size:10px">${r["t2"]:.2f}</td><td style="{TD}">{tv}</td></tr>'
 
-        st.markdown(sort_js+tbl_wrap(f'<table style="width:100%;border-collapse:collapse;min-width:1600px">{thead}<tbody>{body}</tbody></table>'),unsafe_allow_html=True)
+        st.markdown(tbl_wrap(f'<table style="width:100%;border-collapse:collapse;min-width:1600px">{thead}<tbody>{body}</tbody></table>'),unsafe_allow_html=True)
         st.markdown("---")
         csv=pd.DataFrame(filtered).to_csv(index=False).encode("utf-8")
         st.download_button("⬇️ Eksportuj CSV",csv,f"scan_{datetime.date.today()}.csv","text/csv")
