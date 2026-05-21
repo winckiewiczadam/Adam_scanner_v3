@@ -341,12 +341,7 @@ if page == "🌍  Market Radar":
     st.markdown("*Ranking 51 sektorów — RS Score, zmiany %, RVOL, Quadrant Chart*")
     st.markdown("---")
 
-    col_a,col_b = st.columns([3,1])
-    with col_a: show_n=st.slider("Liczba sektorów w tabeli",10,51,30,5)
-    with col_b:
-        st.markdown("<br>",unsafe_allow_html=True)
-        run_sec=st.button("🔄 Odśwież sektory",use_container_width=True)
-
+    run_sec=st.button("🔄 Odśwież dane sektorów")
     if run_sec: st.cache_data.clear()
 
     if "sec_data" not in st.session_state or run_sec:
@@ -365,7 +360,11 @@ if page == "🌍  Market Radar":
     rows=[{"name":n,"etf":v["etf"],"rs":v.get("rs",50),"c1d":v.get("c1d",0),
            "c3d":v.get("c3d",0),"c5d":v.get("c5d",0),"c20d":v.get("c20d",0),
            "c60d":v.get("c60d",0),"rvol":v.get("rvol",1)} for n,v in raw.items()]
-    rows.sort(key=lambda x:x["rs"],reverse=True)
+    # default sort by RS
+    if "sec_sort" not in st.session_state:
+        st.session_state["sec_sort"]="rs"
+        st.session_state["sec_asc"]=False
+    rows.sort(key=lambda x:x.get(st.session_state["sec_sort"],0),reverse=not st.session_state["sec_asc"])
 
     # Risk-On/Off
     abv=sum(1 for r in rows if r["rs"]>=50)
@@ -443,11 +442,23 @@ if page == "🌍  Market Radar":
     with q4: st.markdown(qt(f"Weak ({len(weak_l)})",weak_l,"#e84545"),unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown(f"### Pełny ranking sektorów (top {show_n})")
-    display=rows[:show_n]
+    st.markdown("### Pełny ranking sektorów — wszystkie 51")
+    # Sort controls
+    sc1,sc2,sc3 = st.columns([3,2,1])
+    with sc1:
+        sort_opts={"RS Score":"rs","Zmiana 1D%":"c1d","Zmiana 5D%":"c5d","Zmiana 20D%":"c20d","Zmiana 60D%":"c60d","RVOL":"rvol","Nazwa":"name"}
+        sel_sort=st.selectbox("Sortuj wg",list(sort_opts.keys()),index=list(sort_opts.keys()).index("RS Score"),label_visibility="collapsed")
+        if sort_opts[sel_sort]!=st.session_state.get("sec_sort"):
+            st.session_state["sec_sort"]=sort_opts[sel_sort]; st.session_state["sec_asc"]=False
+    with sc2:
+        asc=st.toggle("Rosnąco",value=st.session_state.get("sec_asc",False))
+        st.session_state["sec_asc"]=asc
+    with sc3:
+        st.caption(f"{len(rows)} sektorów")
+    rows.sort(key=lambda x:x.get(st.session_state["sec_sort"],0),reverse=not st.session_state["sec_asc"])
     head=f'<thead><tr>{"".join(f"<th style=\"{TH}\">{c}</th>" for c in ["#","Sektor","ETF","RS","1D%","3D%","5D%","20D%","60D%","RVOL","Kwadrant"])}</tr></thead>'
     body=""
-    for i,r in enumerate(display,1):
+    for i,r in enumerate(rows,1):
         if r["c5d"]>=0 and r["c20d"]>=0: ql,qc="Strong","#26a65b"
         elif r["c5d"]>=0:                 ql,qc="Improving","#6c8eff"
         elif r["c20d"]>=0:                ql,qc="Weakening","#f0c040"
@@ -539,7 +550,16 @@ elif page == "🔬  Stock Radar":
         if frs>0:              filtered=[r for r in filtered if r["rs"]>=frs]
         filtered.sort(key=lambda x:x["rs"],reverse=True)
 
-        st.caption(f"Wyświetlane: **{len(filtered)}** spółek · skan: `{scan_time}`")
+        # Sort controls for stock table
+        ss1,ss2,ss3=st.columns([3,2,2])
+        with ss1:
+            stock_sort_opts={"RS Score":"rs","Composite Score":"score","ADR%":"adr","RVOL":"rvol","Cena $":"price","Zmiana 1D%":"chg1d","ATR Extension":"atr_ext","R-R":"rr","1M%":"ret1m","3M%":"ret3m","Odl. 52W":"dist52","Vol $M":"vol_m"}
+            sel_ss=st.selectbox("Sortuj spółki wg",list(stock_sort_opts.keys()),label_visibility="collapsed")
+        with ss2:
+            ss_asc=st.toggle("Rosnąco",value=False,key="ss_asc")
+        with ss3:
+            st.caption(f"Wyświetlane: **{len(filtered)}** · skan: `{scan_time}`")
+        filtered.sort(key=lambda x:(x.get(stock_sort_opts[sel_ss]) or 0),reverse=not ss_asc)
 
         cols=["TICKER","KLASA","SCORE","SYGNAŁ","STAGE","RS","ADR%","RVOL","CENA $","1D%","ATR EXT","VARS","R-R","1M%","3M%","52W","MA CHECK","SL","T2","TV"]
         head=f'<thead><tr>{"".join(f"<th style=\"{TH}\">{c}</th>" for c in cols)}</tr></thead>'
