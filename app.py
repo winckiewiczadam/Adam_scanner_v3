@@ -19,6 +19,10 @@ st.set_page_config(
 st.markdown("""
 <style>
 .stApp,[data-testid="stAppViewContainer"]{background:#0d0f14!important;color:#e2e6f0!important}
+header[data-testid="stHeader"]{background:#0d0f14!important;border-bottom:1px solid #1e2230}
+[data-testid="stToolbar"]{background:#0d0f14!important}
+#MainMenu{visibility:hidden}
+footer{visibility:hidden}
 section[data-testid="stSidebar"]{background:#111318!important;border-right:1px solid #1e2230}
 section[data-testid="stSidebar"] *{color:#e2e6f0!important}
 section[data-testid="stSidebar"] [data-testid="stRadio"] label{font-size:13px!important;padding:6px 0!important}
@@ -414,8 +418,8 @@ if page == "🌍  Market Radar":
             hovertemplate="%{customdata}<extra></extra>",customdata=hover))
         fig.update_layout(height=480,paper_bgcolor="#0d0f14",plot_bgcolor="#0d0f14",
             font=dict(family="Segoe UI",color="#e2e6f0"),
-            xaxis=dict(title="Zmiana 5D%",gridcolor="#1e2230",zerolinecolor="#252a3a",tickfont=dict(size=10),titlefont=dict(size=11)),
-            yaxis=dict(title="Zmiana 20D%",gridcolor="#1e2230",zerolinecolor="#252a3a",tickfont=dict(size=10),titlefont=dict(size=11)),
+            xaxis=dict(title=dict(text="Zmiana 5D%",font=dict(size=11)),gridcolor="#1e2230",zerolinecolor="#252a3a",tickfont=dict(size=10)),
+            yaxis=dict(title=dict(text="Zmiana 20D%",font=dict(size=11)),gridcolor="#1e2230",zerolinecolor="#252a3a",tickfont=dict(size=10)),
             showlegend=False,margin=dict(l=60,r=20,t=10,b=50),
             hoverlabel=dict(bgcolor="#161920",bordercolor="#252a3a",font=dict(size=12,color="#e2e6f0")))
         st.plotly_chart(fig,use_container_width=True)
