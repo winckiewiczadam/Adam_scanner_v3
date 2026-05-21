@@ -28,6 +28,17 @@ section[data-testid="stSidebar"] *{color:#e2e6f0!important}
 section[data-testid="stSidebar"] [data-testid="stRadio"] label{font-size:13px!important;padding:6px 0!important}
 .stButton>button{background:#6c8eff!important;color:#fff!important;border:none!important;border-radius:7px!important;font-weight:700!important}
 [data-testid="stNumberInput"] input,[data-testid="stTextInput"] input,.stTextArea textarea,.stSelectbox>div>div{background:#1e2230!important;color:#e2e6f0!important;border:1px solid #252a3a!important;border-radius:6px!important}
+/* Fix nieczytelnych labelow filtrow */
+label[data-testid="stWidgetLabel"] p{color:#c8cfe0!important;font-size:12px!important;font-weight:600!important}
+label[data-testid="stWidgetLabel"]{color:#c8cfe0!important}
+[data-testid="stSelectbox"] label,[data-testid="stNumberInput"] label,[data-testid="stTextInput"] label{color:#c8cfe0!important;font-size:12px!important;font-weight:600!important}
+div[data-testid="stSelectbox"] > label > div > p{color:#c8cfe0!important;font-weight:600!important}
+.stSelectbox label p,.stNumberInput label p,.stTextInput label p,.stCheckbox label p{color:#c8cfe0!important;font-size:12px!important;font-weight:600!important}
+[data-baseweb="select"] [data-testid="stMarkdownContainer"] p{color:#e2e6f0!important}
+.stSelectbox > div > label{color:#c8cfe0!important;font-weight:600!important}
+/* Wszystkie labele w aplikacji */
+.stApp label{color:#c8cfe0!important}
+p[data-testid="stMarkdownContainer"]{color:#c8cfe0!important}
 [data-testid="stMetric"]{background:#161920;border:1px solid #252a3a;border-radius:8px;padding:12px 16px}
 [data-testid="stMetricLabel"]{color:#7a8299!important;font-size:11px!important}
 [data-testid="stMetricValue"]{color:#e2e6f0!important;font-size:22px!important;font-weight:700!important}
@@ -701,27 +712,57 @@ elif page == "🔬  Stock Radar":
         c6.metric("Stage 2A/B",sum(1 for r in rows if r["stage"] in ("2A","2B")))
 
         # ── FILTRY ──
-        st.markdown("**Filtry:**")
-        # Row 1 filters
+        def flabel(txt, hint=""):
+            title = f'<span style="color:#c8cfe0;font-size:12px;font-weight:600">{txt}</span>'
+            h = f' <span style="color:#555;font-size:10px" title="{hint}">?</span>' if hint else ""
+            st.markdown(title+h, unsafe_allow_html=True)
+
+        st.markdown('<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:10px 14px;margin-bottom:8px">', unsafe_allow_html=True)
+        st.markdown('<span style="font-size:11px;font-weight:700;color:#6c8eff">🔍 Filtry</span>', unsafe_allow_html=True)
+
         f1,f2,f3,f4=st.columns(4)
-        with f1: fcls=st.selectbox("Klasa",["Wszystkie","A+","A","A-","B+","B","B-","C","D","E"])
-        with f2: fstg=st.selectbox("Stage",["Wszystkie","2A","2B","2C","1B","3A","4A"])
-        with f3: fsgn=st.selectbox("Sygnał",["Wszystkie","+ Ready","Neutral","− Extended"])
-        with f4: frvol=st.selectbox("RVOL",["Wszystkie","≥ 1.5x","≥ 2.0x"])
-        # Row 2 filters
+        with f1:
+            flabel("Klasa (A-F)")
+            fcls=st.selectbox("_klasa",["Wszystkie","A+","A","A-","B+","B","B-","C","D","E"],label_visibility="collapsed")
+        with f2:
+            flabel("Stage (Weinstein)")
+            fstg=st.selectbox("_stage",["Wszystkie","2A","2B","2C","1B","3A","4A"],label_visibility="collapsed")
+        with f3:
+            flabel("Sygnał")
+            fsgn=st.selectbox("_sgn",["Wszystkie","+ Ready","Neutral","− Extended"],label_visibility="collapsed")
+        with f4:
+            flabel("RVOL (50D)")
+            frvol=st.selectbox("_rvol",["Wszystkie","≥ 1.5x","≥ 2.0x"],label_visibility="collapsed")
+
         f5,f6,f7,f8=st.columns(4)
-        with f5: frs=st.number_input("Min RS",0,99,0,key="frs")
-        with f6: fadr=st.number_input("Min ADR%",0.0,20.0,0.0,0.5,key="fadr")
-        with f7: fext_max=st.number_input("Max ATR Ext (0=off)",0.0,10.0,0.0,0.5,key="fext",
-                                           help="Wyklucza spółki rozciągnięte powyżej tej wartości. Np. 3.0 = bez overextended")
-        with f8: flod_max=st.number_input("Max LoD Dist% (0=off)",0.0,100.0,0.0,5.0,key="flod",
-                                          help="Jeff Sun: wejście gdy LoD < 60% ATR. Wpisz 60 aby filtrować")
+        with f5:
+            flabel("Min RS Score")
+            frs=st.number_input("_rs",0,99,0,label_visibility="collapsed",key="frs")
+        with f6:
+            flabel("Min ADR%")
+            fadr=st.number_input("_adr",0.0,20.0,0.0,0.5,label_visibility="collapsed",key="fadr")
+        with f7:
+            flabel("Max ATR Ext","0 = wyłączony. Np. 3.0 = wyklucz overextended")
+            fext_max=st.number_input("_ext",0.0,10.0,0.0,0.5,label_visibility="collapsed",key="fext")
+        with f8:
+            flabel("Max LoD Dist%","Jeff Sun: wejście gdy LoD < 60% ATR. Wpisz 60")
+            flod_max=st.number_input("_lod",0.0,100.0,0.0,5.0,label_visibility="collapsed",key="flod")
+
         f9,f10,f11,f12=st.columns(4)
-        with f9:  favgdv=st.number_input("Min Avg$Vol (M)",0.0,500.0,0.0,5.0,key="favgdv",
-                                          help="Avg Dollar Volume 50D. Jeff Sun: min $10M")
-        with f10: finside=st.selectbox("Inside Day",["Wszystkie","Tak","Nie"],key="finside")
-        with f11: fsect=st.text_input("Sektor",key="fsect",placeholder="np. Technology").strip()
-        with f12: fshort=st.number_input("Max Short Float%",0.0,100.0,0.0,5.0,key="fshort")
+        with f9:
+            flabel("Min Avg$Vol (M)","Avg Dollar Volume 50D. Jeff Sun: min $10M")
+            favgdv=st.number_input("_avd",0.0,500.0,0.0,5.0,label_visibility="collapsed",key="favgdv")
+        with f10:
+            flabel("Inside Day (VCP)")
+            finside=st.selectbox("_ins",["Wszystkie","Tak","Nie"],label_visibility="collapsed",key="finside")
+        with f11:
+            flabel("Sektor (fragment)")
+            fsect=st.text_input("_sec",label_visibility="collapsed",placeholder="np. Technology",key="fsect").strip()
+        with f12:
+            flabel("Max Short Float%","Wysoki short float = potencjalny squeeze")
+            fshort=st.number_input("_shrt",0.0,100.0,0.0,5.0,label_visibility="collapsed",key="fshort")
+
+        st.markdown('</div>', unsafe_allow_html=True)
 
         filtered=rows[:]
         if fcls!="Wszystkie":    filtered=[r for r in filtered if r["cls"].startswith(fcls)]
