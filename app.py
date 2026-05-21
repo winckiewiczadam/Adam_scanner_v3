@@ -341,8 +341,12 @@ def sgn_pill(s):
     return '<span style="background:#1e1e28;color:#6b7280;padding:1px 7px;border-radius:4px;font-size:10px">Neutral</span>'
 
 def rvol_html(v):
-    c="#60a5fa" if v>=2 else "#a5f3fc" if v>=1.5 else "#7a8299"
-    return f'<span style="color:{c};font-weight:{"700" if v>=1.5 else "400"}">{v:.2f}x</span>'
+    # Jeff Sun: >=1.0 = minimum, >=1.5 = ponadnorma, >=2.0 = atak instytucji
+    if v>=2.0:  c,w="#60a5fa",700   # jasnoniebieski, bold
+    elif v>=1.5: c,w="#93c5fd",700  # niebieski, bold
+    elif v>=1.0: c,w="#bfdbfe",400  # bladoniebieski
+    else:        c,w="#7a8299",400  # szary = ponizej normy
+    return f'<span style="color:{c};font-weight:{w}">{v:.2f}x</span>'
 
 def atr_bar_html(v):
     pct=min(100,v/4*100)
@@ -493,61 +497,53 @@ if page == "🌍  Market Radar":
            "kat":SECTOR_META.get(v["etf"],{}).get("kat","branza"),
            "parent":SECTOR_META.get(v["etf"],{}).get("parent","—"),
            } for n,v in raw.items()]
-    # Breadth widgets
-    abv50_n=sum(r["abv50"] for r in rows); tot_r=max(1,len(rows)); pct50=round(abv50_n/tot_r*100)
-    rs_up=sum(1 for r in rows if r["rs_dir"]=="up")
-    rs_dn=sum(1 for r in rows if r["rs_dir"]=="dn")
-    rs_fl=sum(1 for r in rows if r["rs_dir"]=="flat")
-    bc1,bc2=st.columns(2)
-    with bc1:
-        bc=("#26ff7f" if pct50>=60 else "#f0c040" if pct50>=40 else "#e84545")
-        st.markdown(f"""<div style="background:#161920;border:1px solid #252a3a;border-radius:7px;padding:10px 14px;margin-bottom:8px">
-<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:5px">MARKET BREADTH — sektory ETF powyżej SMA50</div>
-<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px">
-  <span style="color:#26ff7f">{abv50_n} above</span>
-  <span style="font-weight:700;color:{bc}">{pct50}%</span>
-  <span style="color:#e84545">{tot_r-abv50_n} below</span>
-</div>
-<div style="height:8px;background:#252a3a;border-radius:4px"><div style="width:{pct50}%;height:8px;background:{bc};border-radius:4px"></div></div>
-</div>""",unsafe_allow_html=True)
-    with bc2:
-        st.markdown(f"""<div style="background:#161920;border:1px solid #252a3a;border-radius:7px;padding:10px 14px;margin-bottom:8px">
-<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:5px">RS LINE DIRECTION vs SPY (5D)</div>
-<div style="display:flex;gap:14px;font-size:12px;margin-top:6px">
-  <span style="color:#26ff7f;font-weight:700">↑ {rs_up}</span>
-  <span style="color:#7a8299">→ {rs_fl}</span>
-  <span style="color:#e84545;font-weight:700">↓ {rs_dn}</span>
-</div></div>""",unsafe_allow_html=True)
+    # Risk-On / Breadth — używa abv50 (cena ETF vs SMA50)
+    abv=sum(1 for r in rows if r.get("abv50",0))
+    tot=max(1,len(rows)); pct=round(abv/tot*100)
+    rs_up=sum(1 for r in rows if r.get("rs_dir")=="up")
+    rs_dn=sum(1 for r in rows if r.get("rs_dir")=="dn")
+    rs_fl=sum(1 for r in rows if r.get("rs_dir")=="flat")
+    ron=pct>=50
+    bc_col="#26ff7f" if pct>=60 else "#f0c040" if pct>=40 else "#e84545"
+    rw1,rw2=st.columns(2)
+    with rw1:
+        st.markdown(
+            f'<div style="background:{"#0f3320" if ron else "#2e0a0a"};border:1px solid {"#166534" if ron else "#7f1d1d"};'
+            f'border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+            f'<div><div style="font-size:14px;font-weight:800;color:{"#4ade80" if ron else "#f87171"}">{"RISK-ON" if ron else "RISK-OFF"}</div>'
+            f'<div style="font-size:10px;color:{"#86efac" if ron else "#fca5a5"};margin-top:2px">{abv}/{tot} ETF powyzej SMA50 ({pct}%)</div></div>'
+            f'<div style="font-size:26px">{"🟢" if ron else "🔴"}</div></div>',
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            f'<div style="background:#161920;border:1px solid #252a3a;border-radius:7px;padding:8px 14px;margin-bottom:8px">'
+            f'<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:4px">BREADTH — sektory ETF powyzej SMA50</div>'
+            f'<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px">'
+            f'<span style="color:#26ff7f">{abv} above</span>'
+            f'<span style="font-weight:700;color:{bc_col}">{pct}%</span>'
+            f'<span style="color:#e84545">{tot-abv} below</span></div>'
+            f'<div style="height:8px;background:#252a3a;border-radius:4px">'
+            f'<div style="width:{pct}%;height:8px;background:{bc_col};border-radius:4px"></div></div></div>',
+            unsafe_allow_html=True
+        )
+    with rw2:
+        st.markdown(
+            f'<div style="background:#161920;border:1px solid #252a3a;border-radius:7px;padding:10px 14px;margin-bottom:8px">'
+            f'<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:5px">RS LINE DIRECTION vs SPY (5D)</div>'
+            f'<div style="display:flex;gap:14px;font-size:12px;margin-top:4px">'
+            f'<span style="color:#26ff7f;font-weight:700">↑ Rosnace: {rs_up}</span>'
+            f'<span style="color:#7a8299">→ Boczne: {rs_fl}</span>'
+            f'<span style="color:#e84545;font-weight:700">↓ Spadajace: {rs_dn}</span>'
+            f'</div></div>',
+            unsafe_allow_html=True
+        )
     # Apply category filters
     if kat_filter=="🏛️ Główne sektory S&P500": rows=[r for r in rows if r["kat"]=="sektor"]
     elif kat_filter=="🔬 Branże / Nisze": rows=[r for r in rows if r["kat"]=="branza"]
     if parent_filter!="Wszystkie": rows=[r for r in rows if r["parent"]==parent_filter]
-    # default sort by RS
     if "sec_sort" not in st.session_state:
-        st.session_state["sec_sort"]="rs"
-        st.session_state["sec_asc"]=False
+        st.session_state["sec_sort"]="rs"; st.session_state["sec_asc"]=False
     rows.sort(key=lambda x:x.get(st.session_state["sec_sort"],0),reverse=not st.session_state["sec_asc"])
-
-    # Risk-On/Off
-    abv=sum(1 for r in rows if r["rs"]>=50)
-    tot=len(rows); pct=round(abv/tot*100) if tot else 0
-    ron=pct>=50
-    risk_col="#0f3320" if ron else "#2e0a0a"
-    risk_border="#166534" if ron else "#7f1d1d"
-    risk_txt_col="#4ade80" if ron else "#f87171"
-    risk_label="RISK-ON ✅" if ron else "RISK-OFF 🔴"
-    st.markdown(f'<div style="background:{risk_col};border:1px solid {risk_border};border-radius:8px;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div><div style="font-size:15px;font-weight:800;color:{risk_txt_col}">{risk_label}</div><div style="font-size:10px;color:{risk_txt_col}88;margin-top:2px">{abv}/{tot} sektorów powyżej RS 50 ({pct}%)</div></div><div style="font-size:26px">{"🟢" if ron else "🔴"}</div></div>', unsafe_allow_html=True)
-
-    # Metrics
-    strong=sum(1 for r in rows if r["c5d"]>=0 and r["c20d"]>=0)
-    improv=sum(1 for r in rows if r["c5d"]>=0 and r["c20d"]<0)
-    weakn =sum(1 for r in rows if r["c5d"]<0  and r["c20d"]>=0)
-    weak  =sum(1 for r in rows if r["c5d"]<0  and r["c20d"]<0)
-    m1,m2,m3,m4,m5=st.columns(5)
-    m1.metric("Śr. RS Score",round(np.mean([r["rs"] for r in rows]),1))
-    m2.metric("Strong ↑↑",strong); m3.metric("Improving ↑↓",improv)
-    m4.metric("Weakening ↓↑",weakn); m5.metric("Weak ↓↓",weak)
-
     st.markdown("---")
 
     # Quadrant Chart
@@ -895,40 +891,138 @@ elif page == "🔬  Stock Radar":
 # ═══════════════════════════════════════════════════════════════
 elif page == "📚  Playbook":
     st.markdown("# 📚 Playbook & Strategy")
-    st.markdown("*Checklista · Kalkulator pozycji · System A-F · Wskaźniki · Stage Analysis*")
+    st.markdown("*Rutyna · Checklista · Kalkulator · Definicje · System A-F · Stage · Focus List*")
     st.markdown("---")
 
-    tab1,tab2,tab3,tab4,tab5,tab6=st.tabs(["✅ Checklista","💰 Kalkulator","🏷️ System A-F","📐 Wskaźniki","📊 Stage","🎯 Focus List"])
+    tab1,tab2,tab3,tab4,tab5,tab6,tab7=st.tabs([
+        "📋 Rutyna pracy","✅ Checklista","💰 Kalkulator",
+        "🏷️ System A-F","📐 Wskaźniki","📊 Stage","🎯 Focus List"
+    ])
 
+    # ══════ TAB 1: RUTYNA ══════
     with tab1:
+        st.markdown("### Rutyna pracy ze skanerem — krok po kroku")
+
+        def step_card(num, title, color, items, note=""):
+            items_html = "".join(
+                f'<div style="font-size:11px;color:#b0b8cc;padding:3px 0;border-bottom:1px solid #1e2230">{x}</div>'
+                for x in items
+            )
+            note_html = f'<div style="font-size:10px;color:#7a8299;margin-top:6px;font-style:italic">{note}</div>' if note else ""
+            html = (
+                '<div style="background:#161920;border-left:4px solid ' + color + ';border-radius:8px;padding:12px 16px;margin-bottom:10px">'
+                '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+                '<div style="background:' + color + ';color:#000;width:24px;height:24px;border-radius:50%;'
+                'display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0">' + str(num) + '</div>'
+                '<div style="font-size:13px;font-weight:700;color:' + color + '">' + title + '</div>'
+                '</div>' + items_html + note_html + '</div>'
+            )
+            st.markdown(html, unsafe_allow_html=True)
+
+        st.markdown("#### 🌅 PRZED SESJĄ (pre-market)")
+        step_card(1,"Page 1 — Market Radar: Kontekst rynku","#6c8eff",[
+            "Risk-On czy Risk-Off? → jeśli RISK-OFF = nie szukasz nowych wejść",
+            "Breadth: ile sektorów nad SMA50? → <40% = gotówka, 40-60% = małe pozycje, >60% = normalnie",
+            "RS Line Direction: ile sektorów ma ↑ vs ↓ → chcesz przewagi rosnących",
+            "Quadrant chart: które sektory w STRONG? → zapisujesz 2-3 do dalszej pracy",
+        ],"Jeff Sun i Franczesko: zawsze zacznij od kontekstu rynku, nie od spółek")
+
+        step_card(2,"Page 2 — Stock Radar: Załaduj watchlistę","#4ade80",[
+            "Wybierz watchlistę (wczoraj przygotowaną post-market)",
+            "Kliknij Uruchom skanowanie — w tym czasie obserwuj Page 1",
+            "Watchlista to lista pre-filtrowana — nie skanujesz całego rynku rano",
+        ],"Watchlista = praca post-market z poprzedniego dnia. Rano tylko weryfikujesz.")
+
+        step_card(3,"Filtry — eliminacja słabych spółek","#f0c040",[
+            "Klasa: A lub B | Stage: 2A lub 2B",
+            "Min RS: 70 | Min ADR%: 3.0 | Min Avg$Vol: 10M",
+            "Max ATR Ext: 3.0 (eliminuje overextended)",
+            "Sygnał: + Ready | Max LoD Dist%: 60",
+        ],"Po tych filtrach zostajesz z 20-40% listy = Twoja Focus List")
+
+        step_card(4,"Analiza tabeli — wybór kandydatów","#26ff7f",[
+            "Sortuj po Score malejąco — najsilniejsze na górze",
+            "Dla top 5: KLASA → RS → ATR EXT → LoD% → VARS → ID → R-R → RVOL → SEKTOR → MA",
+            "Spółka która przejdzie wszystkie punkty = prime setup",
+            "Kliknij TV przy spółce → potwierdź setup na wykresie TradingView",
+        ],"Skaner = lista kandydatów. Wykres = ostateczne potwierdzenie.")
+
+        st.markdown("#### 📈 W TRAKCIE SESJI")
+        step_card(5,"Execution — czekasz na sygnał wejścia","#c084fc",[
+            "Wariant 1: Cena wybija ORH + RVOL >= 1.5x → wchodzisz",
+            "Wariant 2: M30 Re-ORH (reclaim po 30 min) + RVOL >= 1.0x → wchodzisz",
+            "Wariant 3: Pullback do EMA10 na niskim RVOL → wchodzisz",
+            "Jeśli do 30 min żadna spółka nie spełnia warunków → NIE WCHODZISZ",
+            "Sprawdź LoD Dist% W MOMENCIE WEJŚCIA — musi nadal być < 60%",
+        ],'Jeff Sun: "Patience is the edge." Lepszy brak transakcji niż zły entry.')
+
+        step_card(6,"Trade Management — T+3","#fb923c",[
+            "T = dzień wejścia | T+1, T+2, T+3 = kolejne sesje (bez weekendów)",
+            "T+3 brak ruchu → rozważ wyjście (setup nie pracuje)",
+            "T+3 cena > entry + 1R → przesuń SL na breakeven",
+            "T1 (2R osiągnięty) → sprzedaj 33%, przesuń SL na BE",
+            "T2 (3R osiągnięty) → sprzedaj kolejne 33%, trzymaj resztę na EMA10",
+        ])
+
+        st.markdown("#### 🌙 PO SESJI (post-market)")
+        step_card(7,"Aktualizuj watchlisty — przygotowanie na jutro","#26a65b",[
+            "Spółki które wybiły dziś ale nie weszłeś → zostają na watchliście",
+            "Spółki które złamały strukturę → usuwasz",
+            "Nowe spółki ze skanerów Finviz/TradingView → dodajesz",
+            "Sprawdź kalendarz wyników na najbliższe 14 dni → unikasz earnings zone",
+        ],"Jeff Sun: 14 skanerów post-market każdego wieczoru.")
+
+        st.markdown("---")
+        st.markdown(
+            '<div style="background:#0f3320;border:1px solid #166534;border-radius:8px;padding:12px 16px">'
+            '<div style="font-size:12px;font-weight:700;color:#4ade80;margin-bottom:6px">Złota zasada całego procesu</div>'
+            '<div style="font-size:11px;color:#b0b8cc">'
+            '<b style="color:#e2e6f0">Market Radar</b> (kontekst) → '
+            '<b style="color:#e2e6f0">Stock Radar</b> (kandydaci) → '
+            '<b style="color:#e2e6f0">TradingView</b> (potwierdzenie) → '
+            '<b style="color:#e2e6f0">Execution</b> (ORH + RVOL) → '
+            '<b style="color:#e2e6f0">T+3 Management</b>'
+            '</div></div>',
+            unsafe_allow_html=True
+        )
+
+    # ══════ TAB 2: CHECKLISTA ══════
+    with tab2:
         st.markdown("### Checklista przed wejściem w pozycję")
+        st.caption("Zaznacz wszystkie punkty zanim wejdziesz w pozycję")
         checks=[
             "SPY/QQQ powyżej SMA50 (trend rynku wzrostowy)",
-            "Breadth: >60% sektorów nad SMA50 (Risk-On)",
-            "Sektor spółki w kwadrancie STRONG (RS Line rośnie ↑)",
+            "Breadth: >60% sektorów nad SMA50 (Risk-On potwierdzony)",
+            "Sektor spółki w kwadrancie STRONG z rosnącym RS",
             "Spółka klasy A lub B (ADR > 3%, RS > 70)",
             "Stage 2A lub 2B (Weinstein trend wzrostowy)",
-            "ATR Extension < 1.5× od SMA50 (nie overextended)",
+            "ATR Extension < 1.5x od SMA50 (nie overextended)",
             "VARS 4/5 LUB Inside Day (VCP — ciasna baza)",
             "LoD Dist < 60% ATR (wejście blisko Low dnia)",
             "RVOL >= 1.0 na otwarciu (wolumen potwierdza ruch)",
-            "Avg $Vol >= $10M (płynność, bez slippage)",
+            "Avg Dollar Vol >= $10M (płynność — bez slippage)",
             "R-R >= 2.0 (min. 2x zysk do ryzyka)",
-            "Stop loss zdefiniowany PRZED wejściem",
+            "Stop loss zdefiniowany PRZED wejściem w pozycję",
         ]
         if "checks" not in st.session_state: st.session_state["checks"]=[False]*len(checks)
         for i,c in enumerate(checks):
             st.session_state["checks"][i]=st.checkbox(c,value=st.session_state["checks"][i],key=f"ck_{i}")
         done=sum(st.session_state["checks"]); total=len(checks)
-        if done==total: st.success(f"✅ {done}/{total} — Możesz szukać setupów!")
-        else: st.warning(f"⚠️ {done}/{total} — Uzupełnij checklistę przed wejściem")
+        if done==total:
+            st.success(f"Wszystkie {done}/{total} warunki spełnione. Możesz szukać setupów!")
+        elif done>=8:
+            st.warning(f"{done}/{total} — Prawie gotowy. Uzupełnij brakujące punkty.")
+        else:
+            st.error(f"{done}/{total} — Za mało warunków. Poczekaj na lepsze warunki rynkowe.")
 
-    with tab2:
+    # ══════ TAB 3: KALKULATOR ══════
+    with tab3:
         st.markdown("### Kalkulator wielkości pozycji")
+        st.caption("Ryzykuj max 1-2% kapitału na jedną transakcję")
         c1,c2=st.columns(2)
         with c1:
-            cap=st.number_input("Kapitał ($)",100,10000000,50000,1000)
-            price=st.number_input("Cena wejścia ($)",0.01,100000.0,100.0,1.0)
+            cap=st.number_input("Kapital ($)",100,10000000,50000,1000)
+            price=st.number_input("Cena wejscia ($)",0.01,100000.0,100.0,1.0)
         with c2:
             risk_pct=st.number_input("Max ryzyko %",0.1,10.0,1.0,0.1)
             sl_price=st.number_input("Stop Loss ($)",0.01,100000.0,94.0,0.5)
@@ -938,109 +1032,212 @@ elif page == "📚  Playbook":
             st.markdown("---")
             r1,r2,r3,r4=st.columns(4)
             r1.metric("Liczba akcji",f"{shares:,}")
-            r2.metric("Wartość pozycji",f"${shares*price:,.0f}")
-            r3.metric("Max strata",f"${risk_amt:,.0f}")
+            r2.metric("Wartosc pozycji",f"${shares*price:,.0f}")
+            r3.metric("Max strata (1R)",f"${risk_amt:,.0f}")
             r4.metric("Cel T1 (2R)",f"${price+2*risk_per_sh:.2f}")
-        else: st.error("Stop Loss musi być poniżej ceny wejścia")
+            st.markdown("---")
+            t1c,t2c,t3c=st.columns(3)
+            t1c.metric("T1 — cel 2R",f"${price+2*risk_per_sh:.2f}",delta="Sprzedaj 33%, SL na BE")
+            t2c.metric("T2 — cel 3R",f"${price+3*risk_per_sh:.2f}",delta="Sprzedaj kolejne 33%")
+            t3c.metric("SL",f"${sl_price:.2f}",delta=f"-{risk_per_sh:.2f} na akcje")
+        else:
+            st.error("Stop Loss musi byc ponizej ceny wejscia")
 
-    with tab3:
-        classes=[("A+ Super-Lead","#c084fc","#1a0a4a","ADR>5% · RS>90 · Vol>$50M","Najsilniejsze liderki. Potencjał multibagger."),
-                 ("A Lead","#4ade80","#0f3320","ADR>5% · RS>85","Bardzo silne. Duży zasięg ruchu."),
-                 ("B Quality Growth","#6ee7b7","#0a2820","ADR 3-5% · RS>70","Solidne trendy tech/healthcare."),
-                 ("C Standard Momentum","#fb923c","#2e1a06","ADR 2.5-4% · RS>55","Wolniejsze. Dłuższe trzymanie."),
-                 ("D Slow Movers","#9ca3af","#1e1e28","ADR<2.5% · RS<70","Blue chipy. Zbyt wolne dla momentum."),
-                 ("E Broken Chart","#f87171","#2e0a0a","Cena < SMA200","Trend spadkowy. Omijamy."),
-                 ("F Junk/Illiquid","#fca5a5","#300606","Cena<$5 lub vol<$5M","Ryzyko manipulacji. Zawsze omijamy.")]
-        for name,fg,bg,crit,desc in classes:
-            st.markdown(f'<div style="background:{bg};border-left:4px solid {fg};border-radius:8px;padding:10px 14px;margin-bottom:7px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-size:13px;font-weight:700;color:{fg}">Klasa {name}</span><span style="font-size:10px;color:{fg};background:{fg}22;padding:2px 8px;border-radius:3px">{crit}</span></div><p style="color:#b0b8cc;font-size:12px;margin:0">{desc}</p></div>',unsafe_allow_html=True)
-
+    # ══════ TAB 4: SYSTEM A-F ══════
     with tab4:
-        _inds=[
-            ("ADR% — Average Daily Range",
-             "avg(High-Low)/Close x100 za 20 sesji. ADR>5% = Super-Lead, 3-5% = Quality, <2.5% = Slow Mover. "
-             "Jeff Sun: High ADR pozwala osiagac duze zwroty przy malych pozycjach."),
-            ("ATR Extension — X x ATR od SMA50",
-             "(Cena - SMA50) / ATR(14). Podstawowy wskaznik Jeff Suna. "
-             "<1.0 = Bezpieczne, 1-2 = OK, 2-3 = Uwaga, >3.0 = Overextended - NIE KUPUJ. "
-             "Jeff Sun: Jeden wskaznik wystarczy do pierwszego miliona ze swing tradingu."),
-            ("VARS — Volatility Adjusted Relative Strength",
-             "Ulepszenie klasycznego RS przez Jeff Suna. Uwzglednia zmiennosc spolki. "
-             "VARS Score = RS x ciastosc konsolidacji. Spolka z ADR 8% i RS 85 jest lepsza od spolki z ADR 2% i RS 85. "
-             "Wskaznik TradingView: tradingview.com/script/nbgyYwu1"),
-            ("RVOL — Relative Volume (50D)",
-             "Wolumen dzis / avg 50 sesji (Jeff Sun standard, nie 20!). "
-             ">2.0x = atak instytucji, >1.5x = ponadnorma, <1.0 = brak zainteresowania. "
-             "Jeff Sun: RVOL based entry on ORH have proven statistical edge."),
-            ("LoD Dist% — Low of Day Distance",
-             "(Cena - Low dnia) / ATR x 100. "
-             "< 60% = DOBRY ENTRY (blisko Low, maly drawdown do stopu). "
-             "> 60% = zly entry (za daleko od Low). "
-             "Jeff Sun: Perks of <60% LoD Execution — klucz do ciasnych wejsc."),
-            ("Inside Day — VCP sygnal",
-             "Zakres dzis (High-Low) < zakres wczoraj. "
-             "Sygnal kompresji zmiennosci. Poprzedza wybicia (VCP). "
-             "Jeff Sun ma osobny skaner Inside Day + ADR% na TradingView. "
-             "Jeff Sun: I will NEVER enter a stock with prior loose price action."),
-            ("T+3 — Trade Management",
-             "T = dzien wejscia. T+3 = 3 sesje pozniej (bez weekendow/swiat). "
-             "Do T+3 brak ruchu = rozwazt wyjscie. "
-             "Do T+3 cena > entry + 1R = przesun SL na breakeven. "
-             "Do T+3 silny ruch = trailing EMA10."),
-            ("ORH / M30 Re-ORH",
-             "ORH = Opening Range High — szczyt z pierwszych minut sesji. "
-             "M30 Re-ORH = spolka spada ponizej ORH, ale po 30 minutach go odzyskuje. "
-             "Bardzo silny sygnal kontynuacji przy wysokim RVOL."),
-            ("PEAD — Post-Earnings Drift",
-             "Cena kontynuuje ruch w kierunku niespodzianki wynikowej przez tygodnie. "
-             "Rozni sie od EP (jednorazowy skok) — PEAD = dlugotrwaly drift. "
-             "Jeff Sun: PEAD provides traders opportunity to exploit the delayed market response."),
-            ("Float% i Short Float%",
-             "Float% = akcje w wolnym obrocie / wszystkie akcje. "
-             "Niski Float% (<20%) = kazdy duzy zakup mocno przesuwa cene. "
-             "Short Float% = ile % float jest shortowane. Wysoki (>20%) = potencjalny short squeeze. "
-             "Jeff Sun: Best % performers almost always have: low float, high short, high ADR%."),
-            ("Avg $ Volume — plynnosc",
-             "Sredni dzienny obrot w dolarach (50 sesji). "
-             "Jeff Sun stracil 6-7% equity przez slippage w 2021. "
-             "Min $10M/dzien = akceptowalna plynnosc. $50M+ = dobra. $100M+ = swietna."),
-            ("Composite Score (0-100)",
-             "RS x0.4 + Stage + RVOL + VARS + R-R. "
-             "80+ = elite setup, 60-80 = dobry, <40 = slaby."),
+        st.markdown("### System klasyfikacji A-F")
+        classes=[
+            ("A+ Super-Lead","#c084fc","#1a0a4a","ADR>5% · RS>90 · Vol>$50M",
+             "Najsilniejsze liderki rynku. Potencjal multibagger. Najwyzszy priorytet."),
+            ("A Lead","#4ade80","#0f3320","ADR>5% · RS>85",
+             "Bardzo silne. Duzy zasieg ruchu. Zazwyczaj tech/biotech/space."),
+            ("B Quality Growth","#6ee7b7","#0a2820","ADR 3-5% · RS>70",
+             "Solidne trendy. Mniejszy potencjal niz A, ale bardziej przewidywalne."),
+            ("C Standard Momentum","#fb923c","#2e1a06","ADR 2.5-4% · RS>55",
+             "Wolniejsze spolki. Dluzsze trzymanie. Mniejszy dzienny zasieg."),
+            ("D Slow Movers","#9ca3af","#1e1e28","ADR<2.5% · RS<70",
+             "Blue chipy — zbyt wolne dla strategii momentum. Pomijamy."),
+            ("E Broken Chart","#f87171","#2e0a0a","Cena < SMA200",
+             "Trend spadkowy lub po crashu. Omijamy."),
+            ("F Junk/Illiquid","#fca5a5","#300606","Cena<$5 lub vol<$5M",
+             "Ryzyko manipulacji. Penny stocks. Zawsze omijamy."),
         ]
-        for title,body in _inds:
-            with st.expander(f"📐 {title}"):
-                st.markdown(body)
+        for name,fg,bg,crit,desc in classes:
+            st.markdown(
+                f'<div style="background:{bg};border-left:4px solid {fg};border-radius:8px;padding:10px 14px;margin-bottom:7px">'
+                f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+                f'<span style="font-size:13px;font-weight:700;color:{fg}">Klasa {name}</span>'
+                f'<span style="font-size:10px;color:{fg};background:{fg}22;padding:2px 8px;border-radius:3px">{crit}</span>'
+                f'</div><p style="color:#b0b8cc;font-size:12px;margin:0">{desc}</p></div>',
+                unsafe_allow_html=True
+            )
+        st.markdown("---")
+        st.markdown("### Sygnal — jakosc setupu")
+        signals=[
+            ("+ Ready","#26ff7f","#0f3320","ATR Ext < 1.5 · VARS >= 4/5 · R-R >= 2.0",
+             "Spolka gotowa do ruchu. Ciasna baza, mala rozciagnietosoc, dobry R-R. Priorytet."),
+            ("Neutral","#6b7280","#1e1e28","Brak sygnalu",
+             "Spolka w trendzie ale buduje baze. Czekaj."),
+            ("Extended","#ff6b6b","#2e0a0a","ATR Ext > 3.0",
+             "Za daleko od SMA50. Nie kupuj — czekaj na pullback do EMA10."),
+        ]
+        for name,fg,bg,crit,desc in signals:
+            st.markdown(
+                f'<div style="background:{bg};border-left:4px solid {fg};border-radius:8px;padding:10px 14px;margin-bottom:7px">'
+                f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+                f'<span style="font-size:13px;font-weight:700;color:{fg}">{name}</span>'
+                f'<span style="font-size:10px;color:{fg};background:{fg}22;padding:2px 8px;border-radius:3px">{crit}</span>'
+                f'</div><p style="color:#b0b8cc;font-size:12px;margin:0">{desc}</p></div>',
+                unsafe_allow_html=True
+            )
 
+    # ══════ TAB 5: WSKAZNIKI ══════
     with tab5:
-        stages=[("2A — Breakout","#4ade80","#0f3320","NAJLEPSZY moment wejścia. Wybicie z bazy, RVOL wysoki."),
-                ("2B — Advancing","#86efac","#172a18","Silny trend wzrostowy. Pullbacki do EMA10/20. Trzymaj."),
-                ("2C — Late Stage","#bbf7d0","#1a2c1a","Rozciągnięta. Zmniejszaj pozycję. Nie dokupuj."),
-                ("1B — Basing","#93c5fd","#1a2030","Buduje bazę po Stage 1A. Czekaj na wybicie."),
-                ("3A — Distribution","#fb923c","#2e1a06","EMA10 tnie EMA20. Instytucje sprzedają. Zamknij."),
-                ("4A — Declining","#f87171","#2e0a0a","Trend spadkowy. Omijaj. Szukaj shorta lub stój z boku.")]
-        for name,fg,bg,desc in stages:
-            st.markdown(f'<div style="background:{bg};border-left:4px solid {fg};border-radius:8px;padding:10px 14px;margin-bottom:7px"><span style="font-size:13px;font-weight:700;color:{fg}">{name}</span><p style="color:#b0b8cc;font-size:12px;margin:5px 0 0">{desc}</p></div>',unsafe_allow_html=True)
+        st.markdown("### Definicje wskaznikow — wzory i przyklady")
 
+        def ind_box(title, formula, interp, quote=""):
+            q = (
+                '<div style="font-size:10px;color:#6c8eff;font-style:italic;margin-top:6px;'
+                'border-left:2px solid #6c8eff;padding-left:8px">' + quote + '</div>'
+            ) if quote else ""
+            st.markdown(
+                '<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:12px 16px;margin-bottom:8px">'
+                '<div style="font-size:12px;font-weight:700;color:#6c8eff;margin-bottom:6px">📐 ' + title + '</div>'
+                '<div style="background:#0f1218;border-radius:5px;padding:8px 10px;font-family:monospace;'
+                'font-size:11px;color:#4ade80;margin-bottom:6px;white-space:pre-wrap">' + formula + '</div>'
+                '<div style="font-size:11px;color:#b0b8cc;line-height:1.6">' + interp + '</div>' + q + '</div>',
+                unsafe_allow_html=True
+            )
+
+        ind_box(
+            "Score — Composite Score (0-100)",
+            "Score = RS x 0.4 + Stage_score + min(RVOL x 7.5, 15) + VARS x 3 + min(R-R x 5, 10)\nStage: 2A=20, 2B=18, 2C=12, 1B=8, 3A=4, 4A=0",
+            "Laczy 5 wskaznikow w jeden numer. RS ma najwieksza wage (40%). 80+ = elite · 60-80 = dobry · <40 = slaby."
+        )
+        ind_box(
+            "ADR% — Average Daily Range",
+            "ADR% = avg(|High - Low| / Close) x 100  (za ostatnie 20 sesji)",
+            "Przecietny dzienny ruch ceny. ADR>5% = Super-Lead · 3-5% = Quality · <2.5% = Slow Mover.\nPrzyklad: ADR 8% → spolka moze dac 40% zwrotu w 5 dniach.",
+            'Jeff Sun: "High ADR% securities allow you to achieve significant returns with smaller position sizes"'
+        )
+        ind_box(
+            "ATR Extension — odleglosc od SMA50",
+            "ATR_Ext = (Cena - SMA50) / ATR(14)\nPrzyklad: Cena=$100, SMA50=$90, ATR=$5 → ATR_Ext = 2.0x",
+            "<1.0 = Bezpieczne | 1-2 = OK | 2-3 = Uwaga | >3.0 = Overextended — NIE KUPUJ.",
+            'Jeff Sun: "One core trading philosophy is all it takes to make your first million from swing trading"'
+        )
+        ind_box(
+            "RVOL — Relative Volume (50-dniowy)",
+            "RVOL = Wolumen_dzis / Sredni_wolumen_50D\nPrzyklad: Dzis 2M akcji, avg 50D = 1M → RVOL = 2.0x",
+            ">2.0x = atak instytucji | >1.5x = ponadnorma | 1.0x = normalny | <0.8x = ponizej normy.\nJeff Sun: baza 50D, nie 20D jak wiekszosc.",
+            'Jeff Sun: "RVOL based entry on ORH have proven statistical edge in the market"'
+        )
+        ind_box(
+            "LoD Dist% — Low of Day Distance",
+            "LoD_Dist% = (Cena - Low_dnia) / ATR x 100\nPrzyklad: Cena=$100, Low=$98, ATR=$5 → LoD = 40% (dobry entry)",
+            "< 60% = DOBRY ENTRY — kupujesz blisko Low, maly drawdown do stopu.\n> 60% = ZLY ENTRY — za daleko od Low, duze ryzyko cofniecia.\nKolory: zielony <60%, czerwony >60%.",
+            'Jeff Sun: "Perks of <60% LoD Execution — trading tight"'
+        )
+        ind_box(
+            "VARS — Volatility Contraction Score (5 kropek)",
+            "5 warunkow ciastosci (kazdy = 1 kropka):\n1. H-L ostatnich 5D < 50% sredniej 20D\n2. Malejace zakresy swiec\n3. Cena blisko EMA10 (odchylenie <1%)\n4. Wolumen spada w konsolidacji\n5. Cena nad EMA20",
+            "4-5/5 = TIGHT | 2-3/5 = normalna | 0-1/5 = luzna baza.\nVARS 4/5 + ATR Ext <1.5 = idealny setup przed wyciem.",
+            'Minervini: "The tighter the base, the bigger the breakout"'
+        )
+        ind_box(
+            "R-R Ratio — Risk/Reward",
+            "R-R = (Szczyt_20D - Cena) / (Cena - EMA10)\nPrzyklad: Cena=$100, Szczyt20D=$120, EMA10=$95 → R-R = 4.0x",
+            ">=2.0x = dobry | 1.5-2.0x = akceptowalny | <1.5x = slaby.\nLicznik = potencjalny zysk. Mianownik = ryzyko (stop)."
+        )
+        ind_box(
+            "Inside Day (ID) — sygnal VCP",
+            "ID = True gdy: (High_dzis - Low_dzis) < (High_wczoraj - Low_wczoraj)",
+            "Zakres dzis mniejszy niz wczoraj = kompresja zmiennosci = spolka oddycha przed wybiciem.\nSygnal VCP. Jeff Sun ma osobny skaner ID + ADR%.",
+            'Jeff Sun: "I will NEVER enter a stock with prior loose price action"'
+        )
+        ind_box(
+            "Float% i Short Float%",
+            "Float% = Akcje_float / Akcje_outstanding x 100\nShort% = Akcje_shortowane / Float x 100",
+            "Float% <20% = low float = duze ruchy przy malym wolumenie.\nShort% >20% = potencjalny short squeeze.",
+            'Jeff Sun: "Best % performers almost always have: low float, high short, high ADR%"'
+        )
+        ind_box(
+            "Avg $ Volume — plynnosc 50D",
+            "Avg_DV = Sredni_wolumen_50D x Cena  (wynik w $M)",
+            "Min $10M = akceptowalna plynnosc. $50M+ = dobra. $100M+ = swietna.\nCzerwony <$10M = ryzyko slippage.",
+            'Jeff Sun: "Slippage cost me 6-7% of my 2021 total equity"'
+        )
+        ind_box(
+            "T+3 — Trade Management",
+            "T = dzien wejscia\nT+1/T+2/T+3 = kolejne sesje (bez weekendow i swiat)",
+            "T+3 bez ruchu → rozwazt wyjscie.\nT+3 cena > entry+1R → przesun SL na breakeven.\nSilny ruch do T+3 → trailing EMA10."
+        )
+        ind_box(
+            "ORH i M30 Re-ORH",
+            "ORH = High z pierwszych 15-30 minut sesji\nM30 Re-ORH = powrot ceny powyzej ORH po 30 minutach",
+            "Wybicie ORH + RVOL >=1.5x = sygnal wejscia.\nM30 Re-ORH = silniejszy sygnal (falstart wyeliminowany).",
+            'Jeff Sun: "RVOL based entry on ORH have proven statistical edge"'
+        )
+        ind_box(
+            "PEAD — Post-Earnings Announcement Drift",
+            "PEAD = kontynuacja ruchu po zaskoczeniu wynikowym przez tygodnie\nWarunki EP: Luka >10% + RVOL >3.0x w dniu wynikow",
+            "Naukowo udokumentowana anomalia rynkowa.\nRozni sie od EP (jednorazowy skok) — PEAD = drift 2-8 tygodni.\nNajlepsze okazje: 3-10 dni po pozytywnym zaskoczeniu.",
+            'Jeff Sun: "PEAD provides traders an opportunity to exploit the delayed market response"'
+        )
+
+    # ══════ TAB 6: STAGE ══════
     with tab6:
-        st.markdown("### 🎯 From Watchlist to Focus List — Jeff Sun Process")
+        st.markdown("### Stage Analysis — Cykl zycia spolki (Weinstein)")
+        stages=[
+            ("Stage 1A/1B — Basing","#9ca3af","#252535",
+             "Konsolidacja po trendzie spadkowym. EMA splecione. Wolumen spada. Czekaj."),
+            ("Stage 2A — Breakout","#4ade80","#0f3320",
+             "Wybicie z bazy. Cena > EMA10 > EMA20 > SMA50 > SMA200. RVOL wysoki. NAJLEPSZY moment wejscia."),
+            ("Stage 2B — Advancing","#86efac","#172a18",
+             "Silny trend wzrostowy. Pullbacki do EMA10/20 na niskim wolumenie. Trzymaj pozycje."),
+            ("Stage 2C — Late Stage","#bbf7d0","#1a2c1a",
+             "Trend wzrostowy ale spolka rozciagnieta. ATR Ext >2.5. Zmniejszaj pozycje."),
+            ("Stage 3A — Distribution","#fb923c","#2e1a06",
+             "EMA10 tnie EMA20. Instytucje sprzedaja. Zamknij pozycje."),
+            ("Stage 4A — Declining","#f87171","#2e0a0a",
+             "Cena pod SMA50 i SMA200. Trend spadkowy. Omijaj."),
+        ]
+        for name,fg,bg,desc in stages:
+            st.markdown(
+                f'<div style="background:{bg};border-left:5px solid {fg};border-radius:8px;padding:10px 14px;margin-bottom:8px">'
+                f'<span style="font-size:13px;font-weight:700;color:{fg}">{name}</span>'
+                f'<p style="color:#b0b8cc;font-size:11px;margin:5px 0 0">{desc}</p></div>',
+                unsafe_allow_html=True
+            )
+
+    # ══════ TAB 7: FOCUS LIST ══════
+    with tab7:
+        st.markdown("### From Watchlist to Focus List — Jeff Sun Process")
         cols_fl=st.columns(3)
         stages_fl=[
-            ("📋 WATCHLIST","#1e2a4a","#6c8eff",
-             ["Klasa A lub B (ADR>3%, RS>70)","Stage 2A/2B lub late 1B","Avg $Vol >= $10M","Sektor w STRONG/IMPROVING","Brak earnings w 14 dniach"]),
-            ("🎯 FOCUS LIST","#0f3320","#4ade80",
-             ["ATR Ext < 1.5x od SMA50","VARS 4/5 LUB Inside Day","LoD Dist < 60% ATR","RVOL >= 1.0","R-R >= 2.0","RS Line rośnie ↑"]),
-            ("🚀 EXECUTION","#1a0a4a","#c084fc",
-             ["Cena wybija ORH na RVOL >= 1.5x","LUB M30 Re-ORH (reclaim po 30 min)","LUB pullback do EMA10 (niski vol)","LoD Dist < 60% W MOMENCIE WEJŚCIA","Stop loss ustawiony PRZED wejściem"]),
+            ("WATCHLIST","#1e2a4a","#6c8eff",
+             ["Klasa A lub B","Stage 2A/2B lub late 1B","Avg $Vol >= $10M","Sektor w STRONG/IMPROVING","Brak earnings w 14 dniach"]),
+            ("FOCUS LIST","#0f3320","#4ade80",
+             ["ATR Ext < 1.5x od SMA50","VARS 4/5 LUB Inside Day","LoD Dist < 60% ATR","RVOL >= 1.0","R-R >= 2.0","RS Line rosnie"]),
+            ("EXECUTION","#1a0a4a","#c084fc",
+             ["Cena wybija ORH na RVOL >= 1.5x","LUB M30 Re-ORH + RVOL >= 1.0x","LUB pullback do EMA10","LoD Dist < 60% W MOMENCIE WEJSCIA","Stop loss ustawiony PRZED wejsciem"]),
         ]
         for (title,bg,fg,items),col in zip(stages_fl,cols_fl):
             with col:
-                items_html="".join(f'<div style="font-size:11px;color:#b0b8cc;padding:3px 0;border-bottom:1px solid #252a3a22">✓ {x}</div>' for x in items)
-                st.markdown(f'<div style="background:{bg};border:1px solid {fg}44;border-top:3px solid {fg};border-radius:8px;padding:12px 14px"><div style="font-size:13px;font-weight:700;color:{fg};margin-bottom:8px">{title}</div>{items_html}</div>',unsafe_allow_html=True)
+                items_html="".join(
+                    f'<div style="font-size:11px;color:#b0b8cc;padding:3px 0;border-bottom:1px solid #1e2230">+ {x}</div>'
+                    for x in items
+                )
+                st.markdown(
+                    f'<div style="background:{bg};border:1px solid {fg}44;border-top:3px solid {fg};border-radius:8px;padding:12px 14px">'
+                    f'<div style="font-size:13px;font-weight:700;color:{fg};margin-bottom:8px">{title}</div>'
+                    f'{items_html}</div>',
+                    unsafe_allow_html=True
+                )
         st.markdown("---")
-        st.markdown("""**Klucz Jeff Suna:** *"Every sustainable price expansion rally will always be preceded by a phase of price contraction/tightening. I will NEVER enter a stock with prior loose price action."*
+        st.markdown("**Klucz Jeff Suna:** *Every sustainable price expansion rally will always be preceded by a phase of price contraction/tightening. I will NEVER enter a stock with prior loose price action.*")
+        st.markdown("**Sekwencja:** Market Radar → Stock Radar (A/B, VARS, LoD<60%) → Focus List → ORH + RVOL → T+3 management")
 
-**Sekwencja:**  
-`Market Radar` → `STRONG sektor` → `Stock Radar` (A/B, VARS, LoD<60%) → `Focus List` → `ORH + RVOL` → `T+3 management`""")
 
 # ═══════════════════════════════════════════════════════════════
 # PAGE 4: WATCHLIST MANAGER
