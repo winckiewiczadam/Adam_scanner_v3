@@ -223,9 +223,12 @@ def get_sector(etf):
         rvol50=calc_rvol(v,n=50)
         s50v=float(sma(c,50).iloc[-1]) if len(c)>=50 else float(c.mean())
         abv50=1 if float(c.iloc[-1])>=s50v else 0
+        h52=float(h["High"].dropna().tail(252).max())
+        price_now=float(c.iloc[-1])
+        dist52_sec=round((price_now/h52-1)*100,1) if h52>0 else None
         return {"rs":rs,"c1d":safe_pct(c,2),"c3d":safe_pct(c,4),"c5d":safe_pct(c,6),
                 "c20d":safe_pct(c,21),"c60d":safe_pct(c,61),
-                "rvol":rvol50,"rs_dir":rs_dir,"abv50":abv50}
+                "rvol":rvol50,"rs_dir":rs_dir,"abv50":abv50,"dist52_sec":dist52_sec}
     except: return None
 
 @st.cache_data(ttl=1800,show_spinner=False)
@@ -486,6 +489,7 @@ if page == "🌍  Market Radar":
            "c1d":v.get("c1d",0),"c3d":v.get("c3d",0),"c5d":v.get("c5d",0),
            "c20d":v.get("c20d",0),"c60d":v.get("c60d",0),"rvol":v.get("rvol",1),
            "rs_dir":v.get("rs_dir","flat"),"abv50":v.get("abv50",0),
+           "dist52_sec":v.get("dist52_sec",None),
            "kat":SECTOR_META.get(v["etf"],{}).get("kat","branza"),
            "parent":SECTOR_META.get(v["etf"],{}).get("parent","—"),
            } for n,v in raw.items()]
@@ -614,16 +618,55 @@ if page == "🌍  Market Radar":
     with sc3:
         st.caption(f"{len(rows)} sektorów")
     rows.sort(key=lambda x:x.get(st.session_state["sec_sort"],0),reverse=not st.session_state["sec_asc"])
-    head=f'<thead><tr>{"".join(f"<th style=\"{TH}\">{c}</th>" for c in ["#","Sektor","ETF","RS","1D%","3D%","5D%","20D%","60D%","RVOL","Kwadrant"])}</tr></thead>'
+
+    # helper badges
+    kat_badge=lambda k:('<span style="background:#1e2a4a;color:#6c8eff;padding:1px 5px;border-radius:3px;font-size:9px">S&P</span>'
+                        if k=="sektor" else
+                        '<span style="background:#1e2230;color:#7a8299;padding:1px 5px;border-radius:3px;font-size:9px">branża</span>')
+    def rs_dir_b(d):
+        if d=="up":   return '<span style="color:#26ff7f;font-weight:700">↑</span>'
+        if d=="dn":   return '<span style="color:#e84545;font-weight:700">↓</span>'
+        return '<span style="color:#7a8299">→</span>'
+
+    sec_cols=["#","Sektor","ETF","TV","Kat.","Sektor-matka","RS","RS↕","1D%","3D%","5D%","20D%","60D%","52W High","RVOL50","SMA50","Kwadrant"]
+    head=f'<thead><tr>{"".join(f"<th style=\"{TH}\">{c}</th>" for c in sec_cols)}</tr></thead>'
     body=""
     for i,r in enumerate(rows,1):
         if r["c5d"]>=0 and r["c20d"]>=0: ql,qc="Strong","#26a65b"
         elif r["c5d"]>=0:                 ql,qc="Improving","#6c8eff"
         elif r["c20d"]>=0:                ql,qc="Weakening","#f0c040"
-        else:                              ql,qc="Weak","#e84545"
+        else:                             ql,qc="Weak","#e84545"
         rv=r["rvol"]; rvc="#60a5fa" if rv>=2 else "#a5f3fc" if rv>=1.5 else "#7a8299"
-        body+=f'<tr style="border-bottom:1px solid #1a1e2a"><td style="{TD};color:#7a8299;font-size:10px">{i}</td><td style="{TD};font-weight:600">{r["name"]}</td><td style="{TD};color:#6c8eff;font-weight:700">{r["etf"]}</td><td style="{TD}">{rs_bar_html(r["rs"])}</td><td style="{TD}">{chg_tag(r["c1d"])}</td><td style="{TD}">{chg_tag(r["c3d"])}</td><td style="{TD}">{chg_tag(r["c5d"])}</td><td style="{TD}">{chg_tag(r["c20d"])}</td><td style="{TD}">{chg_tag(r["c60d"])}</td><td style="{TD};color:{rvc};font-weight:{"700" if rv>=1.5 else "400"}">{rv:.1f}x{" 🔵" if rv>=2 else ""}</td><td style="{TD}"><span style="color:{qc};font-size:10px;font-weight:700">{ql}</span></td></tr>'
-    st.markdown(tbl_wrap(f'<table style="width:100%;border-collapse:collapse;min-width:900px"><thead>{head}</thead><tbody>{body}</tbody></table>'),unsafe_allow_html=True)
+        etf=r["etf"]
+        tv_lnk=f'<a href="https://www.tradingview.com/chart/?symbol={etf}" target="_blank" style="color:#6c8eff;font-size:10px;font-weight:700;text-decoration:none">TV↗</a>'
+        kat=r.get("kat","branza"); parent=r.get("parent","—")
+        rs_d=r.get("rs_dir","flat")
+        abv=r.get("abv50",0)
+        abv_badge=('<span style="color:#26a65b;font-size:9px;font-weight:700">▲ SMA50</span>'
+                   if abv else '<span style="color:#e84545;font-size:9px">▼ SMA50</span>')
+        # 52W High distance
+        d52v=r.get("dist52_sec",None)
+        d52_html_str=(dist52_html(d52v) if d52v is not None else '<span style="color:#555;font-size:10px">—</span>')
+        body+=(f'<tr style="border-bottom:1px solid #1a1e2a">'
+              +f'<td style="{TD};color:#7a8299;font-size:10px">{i}</td>'
+              +f'<td style="{TD};font-weight:600">{r["name"]}</td>'
+              +f'<td style="{TD};color:#6c8eff;font-weight:700">{etf}</td>'
+              +f'<td style="{TD}">{tv_lnk}</td>'
+              +f'<td style="{TD}">{kat_badge(kat)}</td>'
+              +f'<td style="{TD};font-size:10px;color:#7a8299">{parent}</td>'
+              +f'<td style="{TD}">{rs_bar_html(r["rs"])}</td>'
+              +f'<td style="{TD}">{rs_dir_b(rs_d)}</td>'
+              +f'<td style="{TD}">{chg_tag(r["c1d"])}</td>'
+              +f'<td style="{TD}">{chg_tag(r["c3d"])}</td>'
+              +f'<td style="{TD}">{chg_tag(r["c5d"])}</td>'
+              +f'<td style="{TD}">{chg_tag(r["c20d"])}</td>'
+              +f'<td style="{TD}">{chg_tag(r["c60d"])}</td>'
+              +f'<td style="{TD}">{d52_html_str}</td>'
+              +f'<td style="{TD};color:{rvc};font-weight:{"700" if rv>=1.5 else "400"}">{rv:.1f}x{"🔵" if rv>=2 else ""}</td>'
+              +f'<td style="{TD}">{abv_badge}</td>'
+              +f'<td style="{TD}"><span style="color:{qc};font-size:10px;font-weight:700">{ql}</span></td>'
+              +f'</tr>')
+    st.markdown(tbl_wrap(f'<table style="width:100%;border-collapse:collapse;min-width:1200px"><thead>{head}</thead><tbody>{body}</tbody></table>'),unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════
 # PAGE 2: STOCK RADAR
@@ -712,57 +755,32 @@ elif page == "🔬  Stock Radar":
         c6.metric("Stage 2A/B",sum(1 for r in rows if r["stage"] in ("2A","2B")))
 
         # ── FILTRY ──
-        def flabel(txt, hint=""):
-            title = f'<span style="color:#c8cfe0;font-size:12px;font-weight:600">{txt}</span>'
-            h = f' <span style="color:#555;font-size:10px" title="{hint}">?</span>' if hint else ""
-            st.markdown(title+h, unsafe_allow_html=True)
-
-        st.markdown('<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:10px 14px;margin-bottom:8px">', unsafe_allow_html=True)
-        st.markdown('<span style="font-size:11px;font-weight:700;color:#6c8eff">🔍 Filtry</span>', unsafe_allow_html=True)
+        st.markdown("""<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;
+        padding:12px 16px;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:#6c8eff;margin-bottom:10px">🔍 Filtry</div>
+        </div>""", unsafe_allow_html=True)
 
         f1,f2,f3,f4=st.columns(4)
-        with f1:
-            flabel("Klasa (A-F)")
-            fcls=st.selectbox("_klasa",["Wszystkie","A+","A","A-","B+","B","B-","C","D","E"],label_visibility="collapsed")
-        with f2:
-            flabel("Stage (Weinstein)")
-            fstg=st.selectbox("_stage",["Wszystkie","2A","2B","2C","1B","3A","4A"],label_visibility="collapsed")
-        with f3:
-            flabel("Sygnał")
-            fsgn=st.selectbox("_sgn",["Wszystkie","+ Ready","Neutral","− Extended"],label_visibility="collapsed")
-        with f4:
-            flabel("RVOL (50D)")
-            frvol=st.selectbox("_rvol",["Wszystkie","≥ 1.5x","≥ 2.0x"],label_visibility="collapsed")
+        with f1: fcls=st.selectbox("Klasa (A-F)",["Wszystkie","A+","A","A-","B+","B","B-","C","D","E"])
+        with f2: fstg=st.selectbox("Stage (Weinstein)",["Wszystkie","2A","2B","2C","1B","3A","4A"])
+        with f3: fsgn=st.selectbox("Sygnał",["Wszystkie","+ Ready","Neutral","− Extended"])
+        with f4: frvol=st.selectbox("RVOL (50D)",["Wszystkie","≥ 1.5x","≥ 2.0x"])
 
         f5,f6,f7,f8=st.columns(4)
-        with f5:
-            flabel("Min RS Score")
-            frs=st.number_input("_rs",0,99,0,label_visibility="collapsed",key="frs")
-        with f6:
-            flabel("Min ADR%")
-            fadr=st.number_input("_adr",0.0,20.0,0.0,0.5,label_visibility="collapsed",key="fadr")
-        with f7:
-            flabel("Max ATR Ext","0 = wyłączony. Np. 3.0 = wyklucz overextended")
-            fext_max=st.number_input("_ext",0.0,10.0,0.0,0.5,label_visibility="collapsed",key="fext")
-        with f8:
-            flabel("Max LoD Dist%","Jeff Sun: wejście gdy LoD < 60% ATR. Wpisz 60")
-            flod_max=st.number_input("_lod",0.0,100.0,0.0,5.0,label_visibility="collapsed",key="flod")
+        with f5: frs=st.number_input("Min RS Score",0,99,0,key="frs")
+        with f6: fadr=st.number_input("Min ADR%",0.0,20.0,0.0,0.5,key="fadr")
+        with f7: fext_max=st.number_input("Max ATR Ext (0=wył.)",0.0,10.0,0.0,0.5,key="fext",
+                                           help="Wyklucza spółki overextended. Np. 3.0")
+        with f8: flod_max=st.number_input("Max LoD Dist% (0=wył.)",0.0,100.0,0.0,5.0,key="flod",
+                                           help="Jeff Sun: wejście gdy LoD < 60% ATR")
 
         f9,f10,f11,f12=st.columns(4)
-        with f9:
-            flabel("Min Avg$Vol (M)","Avg Dollar Volume 50D. Jeff Sun: min $10M")
-            favgdv=st.number_input("_avd",0.0,500.0,0.0,5.0,label_visibility="collapsed",key="favgdv")
-        with f10:
-            flabel("Inside Day (VCP)")
-            finside=st.selectbox("_ins",["Wszystkie","Tak","Nie"],label_visibility="collapsed",key="finside")
-        with f11:
-            flabel("Sektor (fragment)")
-            fsect=st.text_input("_sec",label_visibility="collapsed",placeholder="np. Technology",key="fsect").strip()
-        with f12:
-            flabel("Max Short Float%","Wysoki short float = potencjalny squeeze")
-            fshort=st.number_input("_shrt",0.0,100.0,0.0,5.0,label_visibility="collapsed",key="fshort")
-
-        st.markdown('</div>', unsafe_allow_html=True)
+        with f9:  favgdv=st.number_input("Min Avg$Vol w mln (0=wył.)",0.0,500.0,0.0,5.0,key="favgdv",
+                                          help="Avg Dollar Volume 50D. Min $10M = dobra płynność")
+        with f10: finside=st.selectbox("Inside Day (VCP)",["Wszystkie","Tak","Nie"],key="finside")
+        with f11: fsect=st.text_input("Sektor (fragment)",key="fsect",placeholder="np. Technology").strip()
+        with f12: fshort=st.number_input("Max Short Float%",0.0,100.0,0.0,5.0,key="fshort",
+                                          help="Wysoki short float = potencjalny squeeze")
 
         filtered=rows[:]
         if fcls!="Wszystkie":    filtered=[r for r in filtered if r["cls"].startswith(fcls)]
