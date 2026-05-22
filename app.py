@@ -250,62 +250,83 @@ def get_sector(etf):
     except: return None
 
 @st.cache_data(ttl=1800,show_spinner=False)
+def get_batch_prices(tickers_tuple):
+    """Pobiera ceny dla wielu spółek w jednym zapytaniu — dużo szybsze niż osobno"""
+    try:
+        import warnings; warnings.filterwarnings("ignore")
+        data=yf.download(list(tickers_tuple),period="1y",interval="1d",
+                         auto_adjust=True,progress=False,threads=True)
+        return data
+    except: return None
+
+@st.cache_data(ttl=3600,show_spinner=False)
+def get_stock_info(ticker):
+    """Pobiera sektor/float osobno — wolne ale cached na 1h"""
+    try:
+        info=yf.Ticker(ticker).info
+        sec=info.get("sector","") or info.get("industry","") or "—"
+        fl=info.get("floatShares"); so=info.get("sharesOutstanding")
+        sp=info.get("shortPercentOfFloat")
+        fp=round(float(fl)/float(so)*100,1) if fl and so else None
+        sf=round(float(sp)*100,1) if sp else None
+        return {"sector":sec,"float_pct":fp,"short_float":sf}
+    except: return {"sector":"—","float_pct":None,"short_float":None}
+
+def calc_stock_from_data(ticker, close, high, low, volume):
+    """Oblicza wszystkie wskaźniki z już pobranych danych"""
+    try:
+        c=close.dropna(); hh=high.dropna(); l=low.dropna(); v=volume.dropna()
+        if len(c)<60: return None
+        p=float(c.iloc[-1])
+        e10=float(ema(c,10).iloc[-1]); e20=float(ema(c,20).iloc[-1])
+        s50=float(sma(c,50).iloc[-1]); s200=float(sma(c,200).iloc[-1])
+        atr_v=float(calc_atr(hh,l,c).iloc[-1])
+        if atr_v<=0: return None
+        adr=calc_adr(c)
+        rv=calc_rvol(v,n=50)
+        avg_dv=round(float(v.tail(50).mean())*p/1e6,1)
+        spy=get_spy(); ret=c.pct_change().dropna(); ret.index=ret.index.normalize()
+        common=ret.index.intersection(spy.index)
+        rs=calc_rs(ret.loc[common],spy.loc[common]) if len(common)>=20 else 50.0
+        ext=round((p-s50)/atr_v,2)
+        vars_v=calc_vars(c,hh,l)
+        stage=classify_stage(p,e10,e20,s50,s200)
+        cls=classify_af(adr,rs,p,s50,s200,avg_dv)
+        h20=float(hh.tail(20).max()); h52=float(hh.tail(252).max())
+        rr=round(max(.01,h20-p)/max(.01,p-e10),2)
+        low_today=float(l.iloc[-1])
+        lod_dist=round((p-low_today)/atr_v*100,1)
+        range_today=float(hh.iloc[-1])-float(l.iloc[-1])
+        range_yest=float(hh.iloc[-2])-float(l.iloc[-2]) if len(hh)>=2 else range_today+1
+        inside_day=(range_today<range_yest)
+        vars_score=round(float(np.clip((rs/50.0)*vars_v,0,10)),1)
+        sign=classify_sign(ext,vars_v,rr,adr=adr)
+        sc=comp_score(rs,stage,rv,vars_v,rr,adr=adr,inside_day=inside_day)
+        def rn(n): return round((p/float(c.iloc[-n])-1)*100,1) if len(c)>n else None
+        return dict(ticker=ticker,cls=cls,sign=sign,stage=stage,rs=rs,adr=adr,rvol=rv,
+                    price=round(p,2),chg1d=safe_pct(c,2),atr_ext=ext,vars=vars_v,
+                    vars_score=vars_score,rr=rr,score=sc,
+                    ret1m=rn(21),ret3m=rn(63),vol_m=avg_dv,avg_dv=avg_dv,
+                    dist52=round((p/h52-1)*100,1),lod_dist=lod_dist,
+                    inside_day=inside_day,sector="—",float_pct=None,short_float=None,
+                    ma_e10=(p>=e10),ma_s20=(p>=e20),ma_s50=(p>=s50),ma_s200=(p>=s200),
+                    sl1=round(p-atr_v,2),sl2=round(p-2*atr_v,2),
+                    t1=round(p+2*atr_v,2),t2=round(p+3*atr_v,2))
+    except: return None
+
+@st.cache_data(ttl=1800,show_spinner=False)
 def get_stock(ticker):
+    """Fallback dla pojedynczej spółki"""
     import time as _time
-    for attempt in range(3):
+    for attempt in range(2):
         try:
             h=yf.Ticker(ticker).history(period="1y",interval="1d",auto_adjust=True)
             if h is None or len(h)<60:
-                if attempt<2: _time.sleep(2); continue
+                if attempt<1: _time.sleep(1); continue
                 return None
-            c,hh,l,v=h["Close"].dropna(),h["High"].dropna(),h["Low"].dropna(),h["Volume"].dropna()
-            if len(c)<60: return None
-            e10=float(ema(c,10).iloc[-1]); e20=float(ema(c,20).iloc[-1])
-            s50=float(sma(c,50).iloc[-1]); s100=float(sma(c,100).iloc[-1]); s200=float(sma(c,200).iloc[-1])
-            atr_v=float(calc_atr(hh,l,c).iloc[-1]); adr=calc_adr(c)
-            rv=calc_rvol(v,n=50)
-            avg_dv=round(float(v.tail(50).mean())*float(c.iloc[-1])/1e6,1)
-            vol_m=avg_dv
-            p=float(c.iloc[-1])
-            spy=get_spy(); ret=c.pct_change().dropna(); ret.index=ret.index.normalize()
-            common=ret.index.intersection(spy.index)
-            rs=calc_rs(ret.loc[common],spy.loc[common]) if len(common)>=20 else 50.0
-            ext=round((p-s50)/atr_v,2) if atr_v>0 else 0.0
-            vars_v=calc_vars(c,hh,l); stage=classify_stage(p,e10,e20,s50,s200)
-            cls=classify_af(adr,rs,p,s50,s200,vol_m)
-            h20=float(hh.tail(20).max()); h52=float(hh.tail(252).max())
-            rr=round(max(.01,h20-p)/max(.01,p-e10),2)
-            low_today=float(l.iloc[-1])
-            lod_dist=round((p-low_today)/atr_v*100,1) if atr_v>0 else 0.0
-            sign=classify_sign(ext,vars_v,rr,adr=adr,lod=lod_dist)
-            sc=comp_score(rs,stage,rv,vars_v,rr,adr=adr,inside_day=inside_day)
-            def rn(n): return round((p/float(c.iloc[-n])-1)*100,1) if len(c)>n else None
-            range_today=float(hh.iloc[-1])-float(l.iloc[-1])
-            range_yest=float(hh.iloc[-2])-float(l.iloc[-2]) if len(hh)>=2 else range_today+1
-            inside_day=(range_today<range_yest)
-            vars_score=round(float(np.clip((rs/50.0)*vars_v,0,10)),1)
-            try:
-                info=yf.Ticker(ticker).info
-                sec_name=info.get("sector","") or info.get("industry","") or "—"
-                float_sh=info.get("floatShares",None)
-                shares_out=info.get("sharesOutstanding",None)
-                short_pct=info.get("shortPercentOfFloat",None)
-                float_pct=round(float(float_sh)/float(shares_out)*100,1) if float_sh and shares_out else None
-                short_float=round(float(short_pct)*100,1) if short_pct else None
-            except:
-                sec_name="—"; float_pct=None; short_float=None
-            return dict(ticker=ticker,cls=cls,sign=sign,stage=stage,rs=rs,adr=adr,rvol=rv,
-                        price=round(p,2),chg1d=safe_pct(c,2),atr_ext=ext,vars=vars_v,
-                        vars_score=vars_score,rr=rr,score=sc,
-                        ret1m=rn(21),ret3m=rn(63),vol_m=vol_m,avg_dv=avg_dv,
-                        dist52=round((p/h52-1)*100,1),lod_dist=lod_dist,
-                        inside_day=inside_day,sector=sec_name,
-                        float_pct=float_pct,short_float=short_float,
-                        ma_e10=(p>=e10),ma_s20=(p>=e20),ma_s50=(p>=s50),ma_s200=(p>=s200),
-                        sl1=round(p-atr_v,2),sl2=round(p-2*atr_v,2),
-                        t1=round(p+2*atr_v,2),t2=round(p+3*atr_v,2))
+            return calc_stock_from_data(ticker,h["Close"],h["High"],h["Low"],h["Volume"])
         except:
-            if attempt<2: import time as _t; _t.sleep(2)
+            if attempt<1: _time.sleep(1)
     return None
 
 # ═══════════════════════════════════════════════════════════════
@@ -944,20 +965,65 @@ elif page == "🔬  Stock Radar":
     st.markdown("---")
 
     if run_scan:
-        st.cache_data.clear()  # wymuś nowe obliczenia z aktualną logiką sygnałów
+        st.cache_data.clear()
         log=[]
-        prog=st.progress(0); stxt=st.empty(); results=[]
+        results=[]
+
+        # ── KROK 1: Batch download cen (1 zapytanie dla wszystkich) ──
+        prog=st.progress(0)
+        stxt=st.empty()
+        stxt.markdown("📥 Pobieranie danych cenowych (batch)...")
+        prog.progress(0.1)
+
+        batch=get_batch_prices(tuple(sorted(tickers)))
+        use_batch=(batch is not None and not batch.empty)
+
+        if use_batch:
+            stxt.markdown(f"✅ Dane pobrane dla {len(tickers)} spółek — obliczam wskaźniki...")
+
+        # ── KROK 2: Oblicz wskaźniki dla każdej spółki ──
         for i,t in enumerate(tickers):
-            prog.progress((i+1)/len(tickers))
-            stxt.markdown(f"Analizuję `{t}` — {i+1}/{len(tickers)} | ✅ **{len(results)}**")
-            r=get_stock(t)
-            if r: results.append(r); log.append(f"✅ {t}: {r['cls']} RS={r['rs']:.0f}")
-            else: log.append(f"SKIP {t}")
-            time.sleep(0.3)  # zwiększone z 0.15 → 0.3 aby uniknąć rate limit
+            prog.progress(0.1+0.6*(i+1)/len(tickers))
+            stxt.markdown(f"Obliczam `{t}` — {i+1}/{len(tickers)} | ✅ **{len(results)}**")
+            r=None
+            if use_batch:
+                try:
+                    # Wyciągnij dane dla tej spółki z batch
+                    if len(tickers)==1:
+                        c=batch["Close"]; h2=batch["High"]
+                        l2=batch["Low"];  v2=batch["Volume"]
+                    else:
+                        c=batch["Close"][t]; h2=batch["High"][t]
+                        l2=batch["Low"][t];  v2=batch["Volume"][t]
+                    r=calc_stock_from_data(t,c,h2,l2,v2)
+                except: pass
+            if r is None:
+                r=get_stock(t)  # fallback
+            if r:
+                results.append(r)
+                log.append(f"✅ {t}: {r['cls']} RS={r['rs']:.0f} sign={r['sign']}")
+            else:
+                log.append(f"SKIP {t}")
+
+        # ── KROK 3: Info (sektor/float) dla top 15 po Score ──
+        stxt.markdown("📊 Pobieranie sektora i float dla najlepszych spółek...")
+        prog.progress(0.75)
+        if results:
+            top15=sorted(results,key=lambda x:x["score"],reverse=True)[:15]
+            for i,r in enumerate(top15):
+                prog.progress(0.75+0.2*(i+1)/len(top15))
+                info=get_stock_info(r["ticker"])
+                r["sector"]=info["sector"]
+                r["float_pct"]=info["float_pct"]
+                r["short_float"]=info["short_float"]
+
+        prog.progress(1.0)
         prog.empty(); stxt.empty()
+
         if show_log:
             with st.expander(f"Log ({len(log)})"): st.code("\n".join(log))
-        if not results: st.error("Brak wyników — zmień watchlistę lub spróbuj ponownie")
+        if not results:
+            st.error("Brak wyników — zmień watchlistę lub spróbuj ponownie")
         else:
             st.session_state["scan_results"]=results
             st.session_state["scan_time"]=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
