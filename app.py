@@ -677,9 +677,10 @@ if page == "🌍  Market Radar":
     # ── Timestamp + session status ───────────────────────────
     import datetime, pytz
     now_utc=datetime.datetime.now(pytz.UTC)
+    now_pl=now_utc.astimezone(pytz.timezone("Europe/Warsaw"))
+    fetched_at=now_pl.strftime("%H:%M")
+    # NYSE otwarte pn-pt 09:30-16:00 ET = 15:30-22:00 PL (zimą) / 15:30-22:00 (latem)
     now_et=now_utc.astimezone(pytz.timezone("America/New_York"))
-    fetched_at=now_et.strftime("%H:%M")
-    # NYSE otwarte pn-pt 09:30-16:00 ET
     is_weekday=now_et.weekday()<5
     mkt_open_time=now_et.replace(hour=9,minute=30,second=0,microsecond=0)
     mkt_close_time=now_et.replace(hour=16,minute=0,second=0,microsecond=0)
@@ -732,7 +733,7 @@ if page == "🌍  Market Radar":
         f'<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;'
         f'padding:10px 16px;display:flex;flex-direction:column;justify-content:center;min-width:180px">'
         f'<div style="font-size:11px;font-weight:700;color:{session_col};margin-bottom:4px">{session_label}</div>'
-        f'<div style="font-size:10px;color:#7a8299">Pobrano: <span style="color:#e2e6f0;font-weight:600">{fetched_at} ET</span></div>'
+        f'<div style="font-size:10px;color:#7a8299">Pobrano: <span style="color:#e2e6f0;font-weight:600">{fetched_at} PL</span></div>'
         f'<div style="font-size:10px;color:#7a8299;margin-top:2px">Cache: <span style="color:#e2e6f0">30 min</span></div>'
         f'<div style="font-size:9px;color:#555;margin-top:3px">Yahoo Finance · 15-20min delay</div>'
         f'</div>'
