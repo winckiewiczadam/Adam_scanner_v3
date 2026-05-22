@@ -674,40 +674,72 @@ if page == "🌍  Market Radar":
     rs_up=sum(1 for r in rows if r.get("rs_dir")=="up")
     rs_dn=sum(1 for r in rows if r.get("rs_dir")=="dn")
     rs_fl=sum(1 for r in rows if r.get("rs_dir")=="flat")
+    # ── Timestamp + session status ───────────────────────────
+    import datetime, pytz
+    now_utc=datetime.datetime.now(pytz.UTC)
+    now_et=now_utc.astimezone(pytz.timezone("America/New_York"))
+    fetched_at=now_et.strftime("%H:%M")
+    # NYSE otwarte pn-pt 09:30-16:00 ET
+    is_weekday=now_et.weekday()<5
+    mkt_open_time=now_et.replace(hour=9,minute=30,second=0,microsecond=0)
+    mkt_close_time=now_et.replace(hour=16,minute=0,second=0,microsecond=0)
+    session_open=(is_weekday and mkt_open_time<=now_et<=mkt_close_time)
+    session_label="🟢 Sesja OTWARTA" if session_open else "🔴 Sesja ZAMKNIĘTA"
+    session_col="#4ade80" if session_open else "#f87171"
+
+    # ── Jeden wiersz: Risk-On | Breadth | RS Direction | Timestamp ───
     ron=pct>=50
+    ron_bg="#0f3320" if ron else "#2e0a0a"
+    ron_col="#4ade80" if ron else "#f87171"
+    ron_border="#166534" if ron else "#7f1d1d"
     bc_col="#26ff7f" if pct>=60 else "#f0c040" if pct>=40 else "#e84545"
-    rw1,rw2=st.columns(2)
-    with rw1:
-        st.markdown(
-            f'<div style="background:{"#0f3320" if ron else "#2e0a0a"};border:1px solid {"#166534" if ron else "#7f1d1d"};'
-            f'border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
-            f'<div><div style="font-size:14px;font-weight:800;color:{"#4ade80" if ron else "#f87171"}">{"RISK-ON" if ron else "RISK-OFF"}</div>'
-            f'<div style="font-size:10px;color:{"#86efac" if ron else "#fca5a5"};margin-top:2px">{abv}/{tot} ETF powyzej SMA50 ({pct}%)</div></div>'
-            f'<div style="font-size:26px">{"🟢" if ron else "🔴"}</div></div>',
-            unsafe_allow_html=True
-        )
-        st.markdown(
-            f'<div style="background:#161920;border:1px solid #252a3a;border-radius:7px;padding:8px 14px;margin-bottom:8px">'
-            f'<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:4px">BREADTH — sektory ETF powyzej SMA50</div>'
-            f'<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px">'
-            f'<span style="color:#26ff7f">{abv} above</span>'
-            f'<span style="font-weight:700;color:{bc_col}">{pct}%</span>'
-            f'<span style="color:#e84545">{tot-abv} below</span></div>'
-            f'<div style="height:8px;background:#252a3a;border-radius:4px">'
-            f'<div style="width:{pct}%;height:8px;background:{bc_col};border-radius:4px"></div></div></div>',
-            unsafe_allow_html=True
-        )
-    with rw2:
-        st.markdown(
-            f'<div style="background:#161920;border:1px solid #252a3a;border-radius:7px;padding:10px 14px;margin-bottom:8px">'
-            f'<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:5px">RS LINE DIRECTION vs SPY (5D)</div>'
-            f'<div style="display:flex;gap:14px;font-size:12px;margin-top:4px">'
-            f'<span style="color:#26ff7f;font-weight:700">↑ Rosnace: {rs_up}</span>'
-            f'<span style="color:#7a8299">→ Boczne: {rs_fl}</span>'
-            f'<span style="color:#e84545;font-weight:700">↓ Spadajace: {rs_dn}</span>'
-            f'</div></div>',
-            unsafe_allow_html=True
-        )
+    rs_dir_col="#26ff7f" if rs_up>rs_dn else "#e84545" if rs_dn>rs_up else "#f0c040"
+
+    st.markdown(
+        f'<div style="display:flex;gap:8px;align-items:stretch;margin-bottom:10px">'
+
+        # 1. Risk-On/Off
+        f'<div style="background:{ron_bg};border:1px solid {ron_border};border-radius:8px;'
+        f'padding:10px 16px;display:flex;align-items:center;gap:10px;flex:1">'
+        f'<div style="font-size:18px">{"🟢" if ron else "🔴"}</div>'
+        f'<div><div style="font-size:13px;font-weight:800;color:{ron_col}">{"RISK-ON" if ron else "RISK-OFF"}</div>'
+        f'<div style="font-size:10px;color:{ron_col}88">{abv}/{tot} ETF nad SMA50</div></div>'
+        f'</div>'
+
+        # 2. Breadth %
+        f'<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;'
+        f'padding:10px 16px;flex:2">'
+        f'<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:4px">BREADTH — % ETF powyżej SMA50</div>'
+        f'<div style="display:flex;align-items:center;gap:10px">'
+        f'<div style="flex:1;height:8px;background:#252a3a;border-radius:4px">'
+        f'<div style="width:{pct}%;height:8px;background:{bc_col};border-radius:4px"></div></div>'
+        f'<span style="font-size:14px;font-weight:800;color:{bc_col};min-width:40px">{pct}%</span>'
+        f'<span style="font-size:10px;color:#26ff7f">{abv}↑</span>'
+        f'<span style="font-size:10px;color:#e84545">{tot-abv}↓</span>'
+        f'</div></div>'
+
+        # 3. RS Line Direction
+        f'<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;'
+        f'padding:10px 16px;flex:1.5;display:flex;flex-direction:column;justify-content:center">'
+        f'<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:5px">RS LINE vs SPY (5D)</div>'
+        f'<div style="display:flex;gap:12px;align-items:center">'
+        f'<span style="font-size:13px;font-weight:800;color:#26ff7f">↑ {rs_up}</span>'
+        f'<span style="font-size:13px;font-weight:600;color:#7a8299">→ {rs_fl}</span>'
+        f'<span style="font-size:13px;font-weight:800;color:#e84545">↓ {rs_dn}</span>'
+        f'</div></div>'
+
+        # 4. Timestamp + sesja
+        f'<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;'
+        f'padding:10px 16px;display:flex;flex-direction:column;justify-content:center;min-width:180px">'
+        f'<div style="font-size:11px;font-weight:700;color:{session_col};margin-bottom:4px">{session_label}</div>'
+        f'<div style="font-size:10px;color:#7a8299">Pobrano: <span style="color:#e2e6f0;font-weight:600">{fetched_at} ET</span></div>'
+        f'<div style="font-size:10px;color:#7a8299;margin-top:2px">Cache: <span style="color:#e2e6f0">30 min</span></div>'
+        f'<div style="font-size:9px;color:#555;margin-top:3px">Yahoo Finance · 15-20min delay</div>'
+        f'</div>'
+
+        f'</div>',
+        unsafe_allow_html=True
+    )
     # Apply category filters
     if kat_filter=="🏛️ Główne sektory S&P500": rows=[r for r in rows if r["kat"]=="sektor"]
     elif kat_filter=="🔬 Branże / Nisze": rows=[r for r in rows if r["kat"]=="branza"]
