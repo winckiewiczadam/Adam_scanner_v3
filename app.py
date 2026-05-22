@@ -459,12 +459,141 @@ with st.sidebar:
     st.markdown("---")
     st.markdown('<div style="font-size:9px;color:#555;line-height:1.8">Dane: Yahoo Finance<br>⚠️ Tylko edukacyjnie<br>Nie jest poradą inwest.</div>', unsafe_allow_html=True)
 
+@st.cache_data(ttl=900,show_spinner=False)
+def get_market_overview():
+    """Pobiera SPY/QQQ/IWM/VIX + Fear&Greed"""
+    result={}
+    # Indeksy główne
+    for ticker,name in [("SPY","S&P 500"),("QQQ","NASDAQ"),("IWM","Russell 2000"),("^VIX","VIX")]:
+        try:
+            h=yf.Ticker(ticker).history(period="60d",interval="1d",auto_adjust=True)
+            if h is None or len(h)<5: continue
+            c=h["Close"].dropna()
+            price=float(c.iloc[-1])
+            chg1d=safe_pct(c,2)
+            chg5d=safe_pct(c,6)
+            s50=float(sma(c,50).iloc[-1]) if len(c)>=50 else price
+            s200=float(sma(c,200).iloc[-1]) if len(c)>=200 else price
+            abv50=(price>=s50)
+            abv200=(price>=s200)
+            # Trend VIX: rośnie czy spada
+            vix_dir="up" if len(c)>=3 and float(c.iloc[-1])>float(c.iloc[-3]) else "dn"
+            result[ticker]={
+                "name":name,"price":round(price,2),"chg1d":chg1d,"chg5d":chg5d,
+                "abv50":abv50,"abv200":abv200,"vix_dir":vix_dir
+            }
+        except: pass
+    # Fear & Greed — alternative.me API (krypto F&G jako proxy)
+    # CNN F&G nie ma publicznego API, używamy własnego obliczenia
+    try:
+        import urllib.request, json
+        url="https://api.alternative.me/fng/?limit=1"
+        req=urllib.request.urlopen(url,timeout=5)
+        data=json.loads(req.read())
+        fg_val=int(data["data"][0]["value"])
+        fg_class=data["data"][0]["value_classification"]
+        result["fear_greed"]={"value":fg_val,"label":fg_class}
+    except:
+        result["fear_greed"]={"value":None,"label":"N/A"}
+    return result
+
 # ═══════════════════════════════════════════════════════════════
 # PAGE 1: MARKET RADAR
 # ═══════════════════════════════════════════════════════════════
 if page == "🌍  Market Radar":
     st.markdown("# 🌍 Market & Sector Radar")
     st.markdown("*Ranking 51 sektorów — RS Score, zmiany %, RVOL, Quadrant Chart*")
+    st.markdown("---")
+
+    # ══════════════════════════════════════════════════════
+    # GÓRNY PASEK: Indeksy + VIX + Fear&Greed
+    # ══════════════════════════════════════════════════════
+    mkt=get_market_overview()
+
+    def idx_card(ticker, name, data):
+        if not data: return ""
+        p=data["price"]; c=data["chg1d"]; c5=data["chg5d"]
+        a50=data["abv50"]; a200=data["abv200"]
+        cc=("#26ff7f" if c>=1 else "#4ade80" if c>=0 else "#fb923c" if c>=-1 else "#e84545")
+        s=("+" if c>=0 else "")
+        a50_html=('<span style="color:#26a65b;font-size:9px;font-weight:700">▲SMA50</span>'
+                  if a50 else '<span style="color:#e84545;font-size:9px">▼SMA50</span>')
+        a200_html=('<span style="color:#26a65b;font-size:9px;font-weight:700">▲SMA200</span>'
+                   if a200 else '<span style="color:#e84545;font-size:9px">▼SMA200</span>')
+        return (
+            f'<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:10px 14px">'
+            f'<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:4px">{name}</div>'
+            f'<div style="font-size:18px;font-weight:800;color:#e2e6f0">${p:,.2f}</div>'
+            f'<div style="font-size:13px;font-weight:700;color:{cc};margin-top:2px">{s}{c:.2f}% dziś</div>'
+            f'<div style="font-size:10px;color:{"#4ade80" if c5>=0 else "#f87171"};margin-top:1px">{("+" if c5>=0 else "")}{c5:.1f}% 5D</div>'
+            f'<div style="display:flex;gap:5px;margin-top:5px">{a50_html} {a200_html}</div>'
+            f'</div>'
+        )
+
+    def vix_card(data):
+        if not data: return ""
+        p=data["price"]; c=data["chg1d"]
+        d=data.get("vix_dir","dn")
+        # VIX: niski = spokój, wysoki = strach
+        if p<15:   vc,vl="#26ff7f","Spokój"
+        elif p<20: vc,vl="#4ade80","Niski"
+        elif p<25: vc,vl="#f0c040","Umiarkowany"
+        elif p<30: vc,vl="#fb923c","Podwyższony"
+        else:      vc,vl="#e84545","Strach"
+        dir_sym=("↑" if d=="up" else "↓")
+        dir_col=("#e84545" if d=="up" else "#26ff7f")  # VIX rośnie = źle
+        cc=("#e84545" if c>=0 else "#26ff7f")
+        return (
+            f'<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:10px 14px">'
+            f'<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:4px">VIX — Indeks Zmienności</div>'
+            f'<div style="display:flex;align-items:center;gap:8px">'
+            f'<div style="font-size:18px;font-weight:800;color:{vc}">{p:.1f}</div>'
+            f'<div style="font-size:20px;font-weight:900;color:{dir_col}">{dir_sym}</div>'
+            f'</div>'
+            f'<div style="font-size:12px;font-weight:700;color:{vc};margin-top:2px">{vl}</div>'
+            f'<div style="font-size:10px;color:{cc};margin-top:1px">{"+" if c>=0 else ""}{c:.2f}% dziś</div>'
+            f'<div style="font-size:9px;color:#7a8299;margin-top:4px">VIX↑ = strach · VIX↓ = spokój</div>'
+            f'</div>'
+        )
+
+    def fg_card(data):
+        if not data or data.get("value") is None:
+            return (
+                '<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:10px 14px">'
+                '<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:4px">Fear & Greed Index</div>'
+                '<div style="font-size:14px;color:#555">Brak danych</div></div>'
+            )
+        v=data["value"]; lbl=data["label"]
+        if v<=20:   vc,emoji="#e84545","😱"
+        elif v<=40: vc,emoji="#fb923c","😨"
+        elif v<=60: vc,emoji="#f0c040","😐"
+        elif v<=80: vc,emoji="#4ade80","😊"
+        else:       vc,emoji="#26ff7f","🤑"
+        bar=v
+        return (
+            f'<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:10px 14px">'
+            f'<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:6px">Fear & Greed Index</div>'
+            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+            f'<div style="font-size:22px;font-weight:900;color:{vc}">{v}</div>'
+            f'<div style="font-size:18px">{emoji}</div>'
+            f'</div>'
+            f'<div style="font-size:11px;font-weight:700;color:{vc};margin-bottom:5px">{lbl}</div>'
+            f'<div style="height:6px;background:#252a3a;border-radius:3px">'
+            f'<div style="width:{bar}%;height:6px;background:linear-gradient(to right,#e84545,#f0c040,#26ff7f);border-radius:3px"></div>'
+            f'</div>'
+            f'<div style="display:flex;justify-content:space-between;font-size:8px;color:#555;margin-top:2px">'
+            f'<span>Strach</span><span>Neutral</span><span>Chciwość</span>'
+            f'</div></div>'
+        )
+
+    # Render górny pasek
+    mc1,mc2,mc3,mc4,mc5=st.columns(5)
+    with mc1: st.markdown(idx_card("SPY","S&P 500",mkt.get("SPY")),unsafe_allow_html=True)
+    with mc2: st.markdown(idx_card("QQQ","NASDAQ 100",mkt.get("QQQ")),unsafe_allow_html=True)
+    with mc3: st.markdown(idx_card("IWM","Russell 2000",mkt.get("IWM")),unsafe_allow_html=True)
+    with mc4: st.markdown(vix_card(mkt.get("^VIX")),unsafe_allow_html=True)
+    with mc5: st.markdown(fg_card(mkt.get("fear_greed")),unsafe_allow_html=True)
+
     st.markdown("---")
 
     sc_f1,sc_f2,sc_f3=st.columns([2,2,2])
