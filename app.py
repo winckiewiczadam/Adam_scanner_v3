@@ -191,9 +191,20 @@ def classify_af(adr,rs,p,s50,s200,vol_m):
     if adr>2.5 and rs>70: return "C+"
     if adr>2.5: return "C"
     return "D"
-def classify_sign(ext,vars_v,rr):
-    if ext<1.5 and vars_v>=4 and rr>=2: return "+"
-    if ext>3: return "-"
+def classify_sign(ext,vars_v,rr,adr=0,lod=None):
+    # PRIME ⭐ — najlepszy setup, wchodzę bez wahania
+    if (ext<1.5 and (vars_v>=4) and rr>=2.0 and adr>5
+            and (lod is None or lod<60)):
+        return "prime"
+    # READY ✅ — dobry setup, warto patrzeć na wykres
+    if ext<2.0 and (vars_v>=3) and rr>=1.5 and adr>3:
+        return "ready"
+    # WATCH 👀 — kandydat, monitoruj
+    if ext<3.0 and vars_v>=1 and rr>=1.0 and adr>2:
+        return "watch"
+    # EXTENDED 🔴 — overextended, nie dotykaj
+    if ext>3.0:
+        return "-"
     return "0"
 def comp_score(rs,stage,rv,vars_v,rr):
     ss={'2A':20,'2B':18,'2C':12,'1B':8,'3A':4,'4A':0,'1A':5}.get(stage,5)
@@ -252,7 +263,7 @@ def get_stock(ticker):
         cls=classify_af(adr,rs,p,s50,s200,vol_m)
         h20=float(hh.tail(20).max()); h52=float(hh.tail(252).max())
         rr=round(max(.01,h20-p)/max(.01,p-e10),2)
-        sign=classify_sign(ext,vars_v,rr)
+        sign=classify_sign(ext,vars_v,rr,adr=adr,lod=lod_dist)
         sc=comp_score(rs,stage,rv,vars_v,rr)
         def rn(n): return round((p/float(c.iloc[-n])-1)*100,1) if len(c)>n else None
         low_today=float(l.iloc[-1])
@@ -950,7 +961,7 @@ elif page == "🔬  Stock Radar":
         c1.metric("Wszystkich",len(rows))
         c2.metric("A+ Super",sum(1 for r in rows if r["cls"]=="A+"))
         c3.metric("A Leads",sum(1 for r in rows if r["cls"].startswith("A")))
-        c4.metric("+ Ready",sum(1 for r in rows if r["sign"]=="+"))
+        c4.metric("Prime/Ready",sum(1 for r in rows if r["sign"] in ("prime","ready")))
         c5.metric("RVOL 1.5x+",sum(1 for r in rows if r["rvol"]>=1.5))
         c6.metric("Stage 2A/B",sum(1 for r in rows if r["stage"] in ("2A","2B")))
 
@@ -963,7 +974,7 @@ elif page == "🔬  Stock Radar":
         f1,f2,f3,f4=st.columns(4)
         with f1: fcls=st.selectbox("Klasa (A-F)",["Wszystkie","A+","A","A-","B+","B","B-","C","D","E"])
         with f2: fstg=st.selectbox("Stage (Weinstein)",["Wszystkie","2A","2B","2C","1B","3A","4A"])
-        with f3: fsgn=st.selectbox("Sygnał",["Wszystkie","+ Ready","Neutral","− Extended"])
+        with f3: fsgn=st.selectbox("Sygnał",["Wszystkie","⭐ Prime","✅ Ready","👀 Watch","🔴 Extended"])
         with f4: frvol=st.selectbox("RVOL (50D)",["Wszystkie","≥ 1.5x","≥ 2.0x"])
 
         f5,f6,f7,f8=st.columns(4)
@@ -985,8 +996,10 @@ elif page == "🔬  Stock Radar":
         filtered=rows[:]
         if fcls!="Wszystkie":    filtered=[r for r in filtered if r["cls"].startswith(fcls)]
         if fstg!="Wszystkie":    filtered=[r for r in filtered if r["stage"]==fstg]
-        if fsgn=="+ Ready":      filtered=[r for r in filtered if r["sign"]=="+"]
-        if fsgn=="− Extended":   filtered=[r for r in filtered if r["sign"]=="-"]
+        if fsgn=="⭐ Prime":      filtered=[r for r in filtered if r["sign"]=="prime"]
+        if fsgn=="✅ Ready":     filtered=[r for r in filtered if r["sign"]=="ready"]
+        if fsgn=="👀 Watch":     filtered=[r for r in filtered if r["sign"]=="watch"]
+        if fsgn=="🔴 Extended":  filtered=[r for r in filtered if r["sign"]=="-"]
         if frvol=="≥ 1.5x":      filtered=[r for r in filtered if r["rvol"]>=1.5]
         if frvol=="≥ 2.0x":      filtered=[r for r in filtered if r["rvol"]>=2.0]
         if frs>0:                 filtered=[r for r in filtered if r["rs"]>=frs]
@@ -1276,24 +1289,47 @@ elif page == "📚  Playbook":
                 unsafe_allow_html=True
             )
         st.markdown("---")
-        st.markdown("### Sygnal — jakosc setupu")
+        st.markdown("### System sygnałów — 3 stopnie gotowości")
+        st.caption("Zastępuje stary binarny +Ready/Neutral/Extended — teraz masz gradację")
         signals=[
-            ("+ Ready","#26ff7f","#0f3320","ATR Ext < 1.5 · VARS >= 4/5 · R-R >= 2.0",
-             "Spolka gotowa do ruchu. Ciasna baza, mala rozciagnietosoc, dobry R-R. Priorytet."),
-            ("Neutral","#6b7280","#1e1e28","Brak sygnalu",
-             "Spolka w trendzie ale buduje baze. Czekaj."),
-            ("Extended","#ff6b6b","#2e0a0a","ATR Ext > 3.0",
-             "Za daleko od SMA50. Nie kupuj — czekaj na pullback do EMA10."),
+            ("⭐ PRIME","#fbbf24","#2d1f00",
+             "ATR Ext < 1.5 · VARS ≥ 4 lub ID · R-R ≥ 2.0 · ADR% > 5% · LoD < 60%",
+             "Najlepszy możliwy setup. Wchodzę bez wahania gdy pojawia się ORH + RVOL ≥ 1.5x. "
+             "Rzadki — 1-3 spółki dziennie z całej listy. Gdy widzisz PRIME = priorytet absolutny."),
+            ("✅ READY","#4ade80","#0f3320",
+             "ATR Ext < 2.0 · VARS ≥ 3 lub ID · R-R ≥ 1.5 · ADR% > 3%",
+             "Dobry setup. Warto otworzyć wykres na TradingView i potwierdzić strukturę. "
+             "Czekasz na ORH lub pullback do EMA10. Mniejsza pewność niż PRIME ale nadal solidny kandydat."),
+            ("👀 WATCH","#6c8eff","#1e2a4a",
+             "ATR Ext < 3.0 · VARS ≥ 1 · R-R ≥ 1.0 · ADR% > 2%",
+             "Kandydat do obserwacji. Spółka nie jest jeszcze gotowa ale buduje strukturę. "
+             "Możliwe że jutro lub pojutrze awansuje do READY/PRIME. Trzymasz na watchliście."),
+            ("🔴 EXTENDED","#ff6b6b","#2e0a0a",
+             "ATR Ext > 3.0",
+             "Spółka za daleko od SMA50. Overextended — nie dotykasz. "
+             "Czekasz na pullback do EMA10/EMA20 zanim znów sprawdzisz setup."),
+            ("Neutral","#6b7280","#1e1e28",
+             "Żaden z powyższych warunków",
+             "Brak wyraźnego sygnału. Spółka w trendzie ale bez konkretnego setupu."),
         ]
         for name,fg,bg,crit,desc in signals:
             st.markdown(
                 f'<div style="background:{bg};border-left:4px solid {fg};border-radius:8px;padding:10px 14px;margin-bottom:7px">'
                 f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
-                f'<span style="font-size:13px;font-weight:700;color:{fg}">{name}</span>'
+                f'<span style="font-size:13px;font-weight:800;color:{fg}">{name}</span>'
                 f'<span style="font-size:10px;color:{fg};background:{fg}22;padding:2px 8px;border-radius:3px">{crit}</span>'
-                f'</div><p style="color:#b0b8cc;font-size:12px;margin:0">{desc}</p></div>',
+                f'</div><p style="color:#b0b8cc;font-size:11px;margin:0">{desc}</p></div>',
                 unsafe_allow_html=True
             )
+        st.markdown("""
+<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:12px 16px;margin-top:8px">
+<div style="font-size:11px;font-weight:700;color:#6c8eff;margin-bottom:8px">Jak używać w praktyce</div>
+<div style="font-size:11px;color:#b0b8cc;line-height:1.8">
+<b style="color:#fbbf24">⭐ PRIME</b> → otwórz TradingView, ustaw alert na ORH, czekasz na RVOL ≥ 1.5x<br>
+<b style="color:#4ade80">✅ READY</b> → sprawdź wykres, jeśli struktura dobra — obserwuj ORH<br>
+<b style="color:#6c8eff">👀 WATCH</b> → dodaj do watchlisty, sprawdź jutro rano<br>
+<b style="color:#ff6b6b">🔴 EXTENDED</b> → ignoruj, czekaj na pullback<br>
+</div></div>""", unsafe_allow_html=True)
 
     # ══════ TAB 5: WSKAZNIKI ══════
     with tab5:
