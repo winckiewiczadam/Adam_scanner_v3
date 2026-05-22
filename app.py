@@ -937,6 +937,7 @@ elif page == "🔬  Stock Radar":
     st.markdown("---")
 
     if run_scan:
+        st.cache_data.clear()  # wymuś nowe obliczenia z aktualną logiką sygnałów
         log=[]
         prog=st.progress(0); stxt=st.empty(); results=[]
         for i,t in enumerate(tickers):
