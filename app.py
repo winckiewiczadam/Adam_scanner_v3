@@ -244,58 +244,62 @@ def get_sector(etf):
 
 @st.cache_data(ttl=1800,show_spinner=False)
 def get_stock(ticker):
-    try:
-        h=yf.Ticker(ticker).history(period="1y",interval="1d",auto_adjust=True)
-        if h is None or len(h)<60: return None
-        c,hh,l,v=h["Close"].dropna(),h["High"].dropna(),h["Low"].dropna(),h["Volume"].dropna()
-        p=float(c.iloc[-1])
-        e10=float(ema(c,10).iloc[-1]); e20=float(ema(c,20).iloc[-1])
-        s50=float(sma(c,50).iloc[-1]); s100=float(sma(c,100).iloc[-1]); s200=float(sma(c,200).iloc[-1])
-        atr_v=float(calc_atr(hh,l,c).iloc[-1]); adr=calc_adr(c)
-        rv=calc_rvol(v,n=50)  # 50-day RVOL
-        avg_dv=round(float(v.tail(50).mean())*p/1e6,1)  # Avg $ Vol 50D
-        vol_m=avg_dv
-        spy=get_spy(); ret=c.pct_change().dropna(); ret.index=ret.index.normalize()
-        common=ret.index.intersection(spy.index)
-        rs=calc_rs(ret.loc[common],spy.loc[common]) if len(common)>=20 else 50.0
-        ext=round((p-s50)/atr_v,2) if atr_v>0 else 0.0
-        vars_v=calc_vars(c,hh,l); stage=classify_stage(p,e10,e20,s50,s200)
-        cls=classify_af(adr,rs,p,s50,s200,vol_m)
-        h20=float(hh.tail(20).max()); h52=float(hh.tail(252).max())
-        rr=round(max(.01,h20-p)/max(.01,p-e10),2)
-        sign=classify_sign(ext,vars_v,rr,adr=adr,lod=lod_dist)
-        sc=comp_score(rs,stage,rv,vars_v,rr)
-        def rn(n): return round((p/float(c.iloc[-n])-1)*100,1) if len(c)>n else None
-        low_today=float(l.iloc[-1])
-        lod_dist=round((p-low_today)/atr_v*100,1) if atr_v>0 else 0.0
-        # Inside Day flag
-        range_today=float(hh.iloc[-1])-float(l.iloc[-1])
-        range_yest=float(hh.iloc[-2])-float(l.iloc[-2]) if len(hh)>=2 else range_today+1
-        inside_day=(range_today<range_yest)
-        # VARS score (Jeff Sun: RS × volatility quality)
-        vars_score=round(float(np.clip((rs/50.0)*vars_v,0,10)),1)
-        # Sector + Float (Opcja A — yfinance info)
+    import time as _time
+    for attempt in range(3):
         try:
-            info=yf.Ticker(ticker).info
-            sec_name=info.get("sector","") or info.get("industry","") or "—"
-            float_sh=info.get("floatShares",None)
-            shares_out=info.get("sharesOutstanding",None)
-            short_pct=info.get("shortPercentOfFloat",None)
-            float_pct=round(float(float_sh)/float(shares_out)*100,1) if float_sh and shares_out else None
-            short_float=round(float(short_pct)*100,1) if short_pct else None
+            h=yf.Ticker(ticker).history(period="1y",interval="1d",auto_adjust=True)
+            if h is None or len(h)<60:
+                if attempt<2: _time.sleep(2); continue
+                return None
+            c,hh,l,v=h["Close"].dropna(),h["High"].dropna(),h["Low"].dropna(),h["Volume"].dropna()
+            if len(c)<60: return None
+            e10=float(ema(c,10).iloc[-1]); e20=float(ema(c,20).iloc[-1])
+            s50=float(sma(c,50).iloc[-1]); s100=float(sma(c,100).iloc[-1]); s200=float(sma(c,200).iloc[-1])
+            atr_v=float(calc_atr(hh,l,c).iloc[-1]); adr=calc_adr(c)
+            rv=calc_rvol(v,n=50)
+            avg_dv=round(float(v.tail(50).mean())*float(c.iloc[-1])/1e6,1)
+            vol_m=avg_dv
+            p=float(c.iloc[-1])
+            spy=get_spy(); ret=c.pct_change().dropna(); ret.index=ret.index.normalize()
+            common=ret.index.intersection(spy.index)
+            rs=calc_rs(ret.loc[common],spy.loc[common]) if len(common)>=20 else 50.0
+            ext=round((p-s50)/atr_v,2) if atr_v>0 else 0.0
+            vars_v=calc_vars(c,hh,l); stage=classify_stage(p,e10,e20,s50,s200)
+            cls=classify_af(adr,rs,p,s50,s200,vol_m)
+            h20=float(hh.tail(20).max()); h52=float(hh.tail(252).max())
+            rr=round(max(.01,h20-p)/max(.01,p-e10),2)
+            low_today=float(l.iloc[-1])
+            lod_dist=round((p-low_today)/atr_v*100,1) if atr_v>0 else 0.0
+            sign=classify_sign(ext,vars_v,rr,adr=adr,lod=lod_dist)
+            sc=comp_score(rs,stage,rv,vars_v,rr)
+            def rn(n): return round((p/float(c.iloc[-n])-1)*100,1) if len(c)>n else None
+            range_today=float(hh.iloc[-1])-float(l.iloc[-1])
+            range_yest=float(hh.iloc[-2])-float(l.iloc[-2]) if len(hh)>=2 else range_today+1
+            inside_day=(range_today<range_yest)
+            vars_score=round(float(np.clip((rs/50.0)*vars_v,0,10)),1)
+            try:
+                info=yf.Ticker(ticker).info
+                sec_name=info.get("sector","") or info.get("industry","") or "—"
+                float_sh=info.get("floatShares",None)
+                shares_out=info.get("sharesOutstanding",None)
+                short_pct=info.get("shortPercentOfFloat",None)
+                float_pct=round(float(float_sh)/float(shares_out)*100,1) if float_sh and shares_out else None
+                short_float=round(float(short_pct)*100,1) if short_pct else None
+            except:
+                sec_name="—"; float_pct=None; short_float=None
+            return dict(ticker=ticker,cls=cls,sign=sign,stage=stage,rs=rs,adr=adr,rvol=rv,
+                        price=round(p,2),chg1d=safe_pct(c,2),atr_ext=ext,vars=vars_v,
+                        vars_score=vars_score,rr=rr,score=sc,
+                        ret1m=rn(21),ret3m=rn(63),vol_m=vol_m,avg_dv=avg_dv,
+                        dist52=round((p/h52-1)*100,1),lod_dist=lod_dist,
+                        inside_day=inside_day,sector=sec_name,
+                        float_pct=float_pct,short_float=short_float,
+                        ma_e10=(p>=e10),ma_s20=(p>=e20),ma_s50=(p>=s50),ma_s200=(p>=s200),
+                        sl1=round(p-atr_v,2),sl2=round(p-2*atr_v,2),
+                        t1=round(p+2*atr_v,2),t2=round(p+3*atr_v,2))
         except:
-            sec_name="—"; float_pct=None; short_float=None
-        return dict(ticker=ticker,cls=cls,sign=sign,stage=stage,rs=rs,adr=adr,rvol=rv,
-                    price=round(p,2),chg1d=safe_pct(c,2),atr_ext=ext,vars=vars_v,
-                    vars_score=vars_score,rr=rr,score=sc,
-                    ret1m=rn(21),ret3m=rn(63),vol_m=vol_m,avg_dv=avg_dv,
-                    dist52=round((p/h52-1)*100,1),lod_dist=lod_dist,
-                    inside_day=inside_day,sector=sec_name,
-                    float_pct=float_pct,short_float=short_float,
-                    ma_e10=(p>=e10),ma_s20=(p>=e20),ma_s50=(p>=s50),ma_s200=(p>=s200),
-                    sl1=round(p-atr_v,2),sl2=round(p-2*atr_v,2),
-                    t1=round(p+2*atr_v,2),t2=round(p+3*atr_v,2))
-    except: return None
+            if attempt<2: import time as _t; _t.sleep(2)
+    return None
 
 # ═══════════════════════════════════════════════════════════════
 # HTML HELPERS
@@ -941,7 +945,7 @@ elif page == "🔬  Stock Radar":
             r=get_stock(t)
             if r: results.append(r); log.append(f"✅ {t}: {r['cls']} RS={r['rs']:.0f}")
             else: log.append(f"SKIP {t}")
-            time.sleep(0.15)
+            time.sleep(0.3)  # zwiększone z 0.15 → 0.3 aby uniknąć rate limit
         prog.empty(); stxt.empty()
         if show_log:
             with st.expander(f"Log ({len(log)})"): st.code("\n".join(log))
