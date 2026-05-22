@@ -360,9 +360,12 @@ def stg_pill(s):
     return f'<span style="background:{bg};color:{fg};padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">{s}</span>'
 
 def sgn_pill(s):
-    if s=="+": return '<span style="background:#0f3320;color:#4ade80;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:700">+ Ready</span>'
-    if s=="-": return '<span style="background:#2e0a0a;color:#ff6b6b;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:700">− Ext</span>'
-    return '<span style="background:#1e1e28;color:#6b7280;padding:1px 7px;border-radius:4px;font-size:10px">Neutral</span>'
+    if s=="prime": return '<span style="background:#2d1f00;color:#fbbf24;border:1px solid #f59e0b;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:800">⭐ Prime</span>'
+    if s=="ready": return '<span style="background:#0f3320;color:#4ade80;border:1px solid #166534;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">✅ Ready</span>'
+    if s=="watch": return '<span style="background:#1e2a4a;color:#6c8eff;border:1px solid #1e3a6e;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">👀 Watch</span>'
+    if s=="-":     return '<span style="background:#2e0a0a;color:#ff6b6b;border:1px solid #7f1d1d;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">🔴 Ext</span>'
+    if s=="+":     return '<span style="background:#0f3320;color:#4ade80;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">Ready</span>'
+    return '<span style="background:#1e1e28;color:#6b7280;padding:2px 8px;border-radius:4px;font-size:10px">Neutral</span>'
 
 def rvol_html(v):
     # Jeff Sun: >=1.0 = minimum, >=1.5 = ponadnorma, >=2.0 = atak instytucji
