@@ -192,18 +192,18 @@ def classify_af(adr,rs,p,s50,s200,vol_m):
     if adr>2.5: return "C"
     return "D"
 def classify_sign(ext,vars_v,rr,adr=0,lod=None):
-    # PRIME ⭐ — najlepszy setup, wchodzę bez wahania
-    if (ext<1.5 and (vars_v>=4) and rr>=2.0 and adr>5
-            and (lod is None or lod<60)):
+    # LoD dist pomijamy w klasyfikacji - dane są z zamknięcia, nie intraday
+    # PRIME ⭐ — najlepszy setup
+    if ext<1.5 and vars_v>=4 and rr>=2.0 and adr>5:
         return "prime"
-    # READY ✅ — dobry setup, warto patrzeć na wykres
-    if ext<2.0 and (vars_v>=3) and rr>=1.5 and adr>3:
+    # READY ✅ — dobry setup
+    if ext<2.0 and vars_v>=3 and rr>=1.5 and adr>3:
         return "ready"
-    # WATCH 👀 — kandydat, monitoruj
+    # WATCH 👀 — kandydat
     if ext<3.0 and vars_v>=1 and rr>=1.0 and adr>2:
         return "watch"
-    # EXTENDED 🔴 — overextended, nie dotykaj
-    if ext>3.0:
+    # EXTENDED 🔴
+    if ext>=3.0:
         return "-"
     return "0"
 def comp_score(rs,stage,rv,vars_v,rr):
