@@ -192,23 +192,30 @@ def classify_af(adr,rs,p,s50,s200,vol_m):
     if adr>2.5: return "C"
     return "D"
 def classify_sign(ext,vars_v,rr,adr=0,lod=None):
-    # LoD dist pomijamy w klasyfikacji - dane są z zamknięcia, nie intraday
-    # PRIME ⭐ — najlepszy setup
-    if ext<1.5 and vars_v>=4 and rr>=2.0 and adr>5:
+    # ⭐ PRIME
+    if ext<2.0 and vars_v>=3 and rr>=2.0 and adr>5:
         return "prime"
-    # READY ✅ — dobry setup
-    if ext<2.0 and vars_v>=3 and rr>=1.5 and adr>3:
+    # ✅ READY
+    if ext<3.0 and vars_v>=3 and rr>=1.5 and adr>4:
         return "ready"
-    # WATCH 👀 — kandydat
-    if ext<3.0 and vars_v>=1 and rr>=1.0 and adr>2:
+    # 👀 WATCH
+    if ext<3.5 and vars_v>=2 and rr>=1.0 and adr>3.5:
         return "watch"
-    # EXTENDED 🔴
-    if ext>=3.0:
+    # 🔴 EXTENDED
+    if ext>=4.0:
         return "-"
     return "0"
-def comp_score(rs,stage,rv,vars_v,rr):
-    ss={'2A':20,'2B':18,'2C':12,'1B':8,'3A':4,'4A':0,'1A':5}.get(stage,5)
-    return min(100,round(rs*.4+ss+min(15,rv*7.5)+vars_v*3+min(10,rr*5)))
+def comp_score(rs,stage,rv,vars_v,rr,adr=0,inside_day=False):
+    # Model scoringowy — Adam Scanner v1
+    # RS (30%) + ADR (20%) + Stage (15%) + RVOL (15%) + VARS (10%) + R-R (5%) + bonusy
+    rs_s   = rs * 0.30                                          # max ~30
+    adr_s  = min(20, adr * 4)                                   # max 20 (ADR 5% = 20pkt)
+    stg_s  = {'2A':15,'2B':13,'2C':8,'1B':5,'3A':2,'4A':0,'1A':3}.get(stage,3)  # max 15
+    rv_s   = min(15, rv * 7.5)                                  # max 15
+    var_s  = min(10, vars_v * 2)                                # max 10
+    rr_s   = min(5,  rr * 2.5)                                  # max 5
+    bonus  = (5 if inside_day else 0) + (5 if stage=='2A' else 0)  # max 10
+    return min(100, round(rs_s + adr_s + stg_s + rv_s + var_s + rr_s + bonus))
 
 # ═══════════════════════════════════════════════════════════════
 # DATA FETCHING
@@ -271,7 +278,7 @@ def get_stock(ticker):
             low_today=float(l.iloc[-1])
             lod_dist=round((p-low_today)/atr_v*100,1) if atr_v>0 else 0.0
             sign=classify_sign(ext,vars_v,rr,adr=adr,lod=lod_dist)
-            sc=comp_score(rs,stage,rv,vars_v,rr)
+            sc=comp_score(rs,stage,rv,vars_v,rr,adr=adr,inside_day=inside_day)
             def rn(n): return round((p/float(c.iloc[-n])-1)*100,1) if len(c)>n else None
             range_today=float(hh.iloc[-1])-float(l.iloc[-1])
             range_yest=float(hh.iloc[-2])-float(l.iloc[-2]) if len(hh)>=2 else range_today+1
@@ -999,6 +1006,9 @@ elif page == "🔬  Stock Radar":
                                           help="Wysoki short float = potencjalny squeeze")
 
         filtered=rows[:]
+        # Przelicz sygnał na żywo dla każdej spółki przed filtrowaniem
+        for r in filtered:
+            r["sign"]=classify_sign(r["atr_ext"],r["vars"],r["rr"],adr=r["adr"])
         if fcls!="Wszystkie":    filtered=[r for r in filtered if r["cls"].startswith(fcls)]
         if fstg!="Wszystkie":    filtered=[r for r in filtered if r["stage"]==fstg]
         if fsgn=="⭐ Prime":      filtered=[r for r in filtered if r["sign"]=="prime"]
@@ -1067,6 +1077,8 @@ elif page == "🔬  Stock Radar":
         thead="<thead><tr>"+"".join(th_s(l,k) for l,k in all_cols)+"</tr></thead>"
         body=""
         for r in filtered:
+            # Przelicz sygnał na żywo — naprawia bug z cache
+            live_sign=classify_sign(r["atr_ext"],r["vars"],r["rr"],adr=r["adr"])
             tv=f'<a href="https://www.tradingview.com/chart/?symbol={r["ticker"]}" target="_blank" style="color:#555;font-size:11px;text-decoration:none">TV</a>'
             tk=f'<a href="https://finance.yahoo.com/quote/{r["ticker"]}" target="_blank" style="color:#6c8eff;font-weight:700;text-decoration:none;font-size:12px">{r["ticker"]}</a>'
             sec_txt=r.get("sector","—") or "—"; sec_short=sec_txt[:12]
@@ -1076,7 +1088,7 @@ elif page == "🔬  Stock Radar":
                   +f'<td style="{TD}">{tk}</td>'
                   +f'<td style="{TD}">{cls_pill(r["cls"])}</td>'
                   +f'<td style="{TD}">{score_bar(r["score"])}</td>'
-                  +f'<td style="{TD}">{sgn_pill(r["sign"])}</td>'
+                  +f'<td style="{TD}">{sgn_pill(live_sign)}</td>'
                   +f'<td style="{TD}">{stg_pill(r["stage"])}</td>'
                   +f'<td style="{TD}">{rs_bar_html(r["rs"])}</td>'
                   +f'<td style="{TD};font-weight:600">{r["adr"]:.1f}%</td>'
@@ -1294,7 +1306,49 @@ elif page == "📚  Playbook":
                 unsafe_allow_html=True
             )
         st.markdown("---")
-        st.markdown("### System sygnałów — 3 stopnie gotowości")
+        st.markdown("### Model Scoringowy — jak czytać Score")
+        score_items=[
+            ("RS Score","30 pkt","Siła względna vs SPY. Najważniejszy składnik.","#6c8eff"),
+            ("ADR%","20 pkt","Dynamika spółki. ADR 5% = max 20 pkt. ADR <2% = 0 pkt.","#f0c040"),
+            ("Stage","15 pkt","2A=15 · 2B=13 · 2C=8 · 1B=5 · 3A=2 · 4A=0","#4ade80"),
+            ("RVOL 50D","15 pkt","Wolumen instytucji. RVOL 2.0x = max 15 pkt.","#60a5fa"),
+            ("VARS","10 pkt","Ciasność konsolidacji. 5 kropek = 10 pkt.","#a78bfa"),
+            ("R-R Ratio","5 pkt","Stosunek zysk/ryzyko. R-R 2.0x = max 5 pkt.","#fb923c"),
+            ("Bonus Inside Day","+5 pkt","VCP sygnał — zakres dziś < wczoraj.","#26ff7f"),
+            ("Bonus Stage 2A","+5 pkt","Najlepszy moment wejścia — bonus za dokładność.","#26ff7f"),
+        ]
+        rows_html="".join(
+            f'<tr style="border-bottom:1px solid #1a1e2a">'
+            f'<td style="padding:7px 12px;font-size:12px;font-weight:600;color:#e2e6f0">{n}</td>'
+            f'<td style="padding:7px 12px;font-size:13px;font-weight:800;color:{c};text-align:center">{p}</td>'
+            f'<td style="padding:7px 12px;font-size:11px;color:#b0b8cc">{d}</td>'
+            f'</tr>'
+            for n,p,d,c in score_items
+        )
+        st.markdown(
+            f'<table style="width:100%;border-collapse:collapse;background:#161920;border:1px solid #252a3a;border-radius:8px;overflow:hidden">'
+            f'<thead><tr style="background:#0f1218">'
+            f'<th style="padding:8px 12px;text-align:left;font-size:10px;color:#7a8299;text-transform:uppercase;letter-spacing:.5px">Składowa</th>'
+            f'<th style="padding:8px 12px;text-align:center;font-size:10px;color:#7a8299;text-transform:uppercase;letter-spacing:.5px">Max punkty</th>'
+            f'<th style="padding:8px 12px;text-align:left;font-size:10px;color:#7a8299;text-transform:uppercase;letter-spacing:.5px">Opis</th>'
+            f'</tr></thead><tbody>{rows_html}</tbody></table>',
+            unsafe_allow_html=True
+        )
+        st.markdown("")
+        score_levels=[("80-100","#26ff7f","Elite setup","Priorytet absolutny. Sprawdź wykres i ustaw alert na ORH."),
+                      ("60-79","#4ade80","Dobry setup","Warto otworzyć TradingView i potwierdzić strukturę."),
+                      ("40-59","#f0c040","Przeciętny","Tylko przy idealnym układzie wykresu."),
+                      ("<40","#e84545","Słaby","Pomijasz. Szukaj lepszych kandydatów.")]
+        cols_sc=st.columns(4)
+        for (rng,col,lbl,desc),c in zip(score_levels,cols_sc):
+            with c:
+                st.markdown(
+                    f'<div style="background:#161920;border-top:3px solid {col};border-radius:8px;padding:10px 12px;text-align:center">'
+                    f'<div style="font-size:18px;font-weight:800;color:{col}">{rng}</div>'
+                    f'<div style="font-size:11px;font-weight:700;color:{col};margin:3px 0">{lbl}</div>'
+                    f'<div style="font-size:10px;color:#7a8299">{desc}</div></div>',
+                    unsafe_allow_html=True
+                )
         st.caption("Zastępuje stary binarny +Ready/Neutral/Extended — teraz masz gradację")
         signals=[
             ("⭐ PRIME","#fbbf24","#2d1f00",
@@ -1355,9 +1409,25 @@ elif page == "📚  Playbook":
             )
 
         ind_box(
-            "Score — Composite Score (0-100)",
-            "Score = RS x 0.4 + Stage_score + min(RVOL x 7.5, 15) + VARS x 3 + min(R-R x 5, 10)\nStage: 2A=20, 2B=18, 2C=12, 1B=8, 3A=4, 4A=0",
-            "Laczy 5 wskaznikow w jeden numer. RS ma najwieksza wage (40%). 80+ = elite · 60-80 = dobry · <40 = slaby."
+            "Score — Model Scoringowy (0-100)",
+            "Score = RS×0.30 + ADR×4 (max 20) + Stage + RVOL×7.5 (max 15) + VARS×2 (max 10) + R-R×2.5 (max 5)\n"
+            "+ Bonus: +5 jesli Inside Day | +5 jesli Stage = 2A\n\n"
+            "Wagi:\n"
+            "RS        30 pkt max  — sila wzgledna vs SPY\n"
+            "ADR%      20 pkt max  — dynamika (ADR 5% = max)\n"
+            "Stage     15 pkt max  — 2A=15, 2B=13, 2C=8, 1B=5\n"
+            "RVOL      15 pkt max  — wolumen instytucji\n"
+            "VARS      10 pkt max  — ciastosc konsolidacji\n"
+            "R-R        5 pkt max  — stosunek zysk/ryzyko\n"
+            "Bonus ID  +5 pkt      — Inside Day (VCP sygnal)\n"
+            "Bonus 2A  +5 pkt      — Stage 2A (najlepszy moment)",
+            "80-100 = Elite setup — priorytet absolutny\n"
+            "60-79  = Dobry setup — warto sprawdzic wykres\n"
+            "40-59  = Przecietny — tylko przy doskonalym wykresie\n"
+            "< 40   = Slaby — pomijasz\n\n"
+            "ADR% ma swoja wage bo to Twoje kryterium nr 1 — spółki z ADR<3% "
+            "nigdy nie osiagna wysokiego Score nawet przy swietnym RS.",
+            'Adam Scanner v1: "Score laczy 6 wskaznikow w jeden numer — jednym spojrzeniem widzisz ranking spolek"'
         )
         ind_box(
             "ADR% — Average Daily Range",
