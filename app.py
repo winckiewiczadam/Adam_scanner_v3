@@ -480,19 +480,61 @@ def get_market_overview():
             vix_dir="up" if len(c)>=3 and float(c.iloc[-1])>float(c.iloc[-3]) else "dn"
             result[ticker]={
                 "name":name,"price":round(price,2),"chg1d":chg1d,"chg5d":chg5d,
-                "abv50":abv50,"abv200":abv200,"vix_dir":vix_dir
+                "abv50":abv50,"abv200":abv200,"vix_dir":vix_dir,
+                "c_series":c
             }
         except: pass
-    # Fear & Greed — alternative.me API (krypto F&G jako proxy)
-    # CNN F&G nie ma publicznego API, używamy własnego obliczenia
+    # Fear & Greed — własne obliczenie na podstawie danych rynkowych (Stock Market)
+    # Składowe wzorowane na CNN F&G:
+    # 1. RSI SPY 14D (25%) — wysokie RSI = chciwość
+    # 2. VIX poziom (25%) — niski VIX = chciwość
+    # 3. Momentum SPY vs SMA125 (25%) — cena powyżej długiej średniej = chciwość
+    # 4. Siła 52W High SPY (25%) — blisko ATH = chciwość
     try:
-        import urllib.request, json
-        url="https://api.alternative.me/fng/?limit=1"
-        req=urllib.request.urlopen(url,timeout=5)
-        data=json.loads(req.read())
-        fg_val=int(data["data"][0]["value"])
-        fg_class=data["data"][0]["value_classification"]
-        result["fear_greed"]={"value":fg_val,"label":fg_class}
+        fg_parts=[]
+        # 1. RSI SPY
+        if "SPY" in result:
+            spy_c=result["SPY"].get("c_series")
+            if spy_c is not None and len(spy_c)>=16:
+                delta=spy_c.diff()
+                gain=delta.clip(lower=0).rolling(14).mean()
+                loss=(-delta.clip(upper=0)).rolling(14).mean()
+                rs=gain/(loss.replace(0,np.nan))
+                rsi=float((100-100/(1+rs)).iloc[-1])
+                fg_parts.append(rsi)
+        # 2. VIX score (odwrócony: niski VIX = wysoki score)
+        if "^VIX" in result:
+            vix_p=result["^VIX"]["price"]
+            vix_score=max(0,min(100,100-(vix_p-10)*2.5))
+            fg_parts.append(vix_score)
+        # 3. Momentum SPY vs SMA125
+        if "SPY" in result:
+            spy_c=result["SPY"].get("c_series")
+            if spy_c is not None and len(spy_c)>=126:
+                s125=float(sma(spy_c,125).iloc[-1])
+                p_now=float(spy_c.iloc[-1])
+                mom_pct=(p_now/s125-1)*100
+                mom_score=max(0,min(100,50+mom_pct*4))
+                fg_parts.append(mom_score)
+        # 4. 52W High proximity
+        if "SPY" in result:
+            spy_c=result["SPY"].get("c_series")
+            if spy_c is not None and len(spy_c)>=252:
+                h52=float(spy_c.tail(252).max())
+                p_now=float(spy_c.iloc[-1])
+                h52_score=max(0,min(100,(p_now/h52)*100))
+                fg_parts.append(h52_score)
+
+        if fg_parts:
+            fg_val=round(sum(fg_parts)/len(fg_parts))
+            if fg_val<=20:   fg_lbl="Extreme Fear"
+            elif fg_val<=40: fg_lbl="Fear"
+            elif fg_val<=60: fg_lbl="Neutral"
+            elif fg_val<=80: fg_lbl="Greed"
+            else:            fg_lbl="Extreme Greed"
+            result["fear_greed"]={"value":fg_val,"label":fg_lbl,"source":"calc"}
+        else:
+            result["fear_greed"]={"value":None,"label":"N/A"}
     except:
         result["fear_greed"]={"value":None,"label":"N/A"}
     return result
@@ -516,17 +558,17 @@ if page == "🌍  Market Radar":
         a50=data["abv50"]; a200=data["abv200"]
         cc=("#26ff7f" if c>=1 else "#4ade80" if c>=0 else "#fb923c" if c>=-1 else "#e84545")
         s=("+" if c>=0 else "")
-        a50_html=('<span style="color:#26a65b;font-size:9px;font-weight:700">▲SMA50</span>'
-                  if a50 else '<span style="color:#e84545;font-size:9px">▼SMA50</span>')
-        a200_html=('<span style="color:#26a65b;font-size:9px;font-weight:700">▲SMA200</span>'
-                   if a200 else '<span style="color:#e84545;font-size:9px">▼SMA200</span>')
+        a50_html=('<span style="background:#0f3320;color:#4ade80;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:700">▲SMA50</span>'
+                  if a50 else '<span style="background:#2e0a0a;color:#f87171;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:700">▼SMA50</span>')
+        a200_html=('<span style="background:#0f3320;color:#4ade80;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:700">▲SMA200</span>'
+                   if a200 else '<span style="background:#2e0a0a;color:#f87171;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:700">▼SMA200</span>')
         return (
-            f'<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:10px 14px">'
-            f'<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:4px">{name}</div>'
-            f'<div style="font-size:18px;font-weight:800;color:#e2e6f0">${p:,.2f}</div>'
-            f'<div style="font-size:13px;font-weight:700;color:{cc};margin-top:2px">{s}{c:.2f}% dziś</div>'
-            f'<div style="font-size:10px;color:{"#4ade80" if c5>=0 else "#f87171"};margin-top:1px">{("+" if c5>=0 else "")}{c5:.1f}% 5D</div>'
-            f'<div style="display:flex;gap:5px;margin-top:5px">{a50_html} {a200_html}</div>'
+            f'<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:14px 16px">'
+            f'<div style="font-size:11px;color:#7a8299;font-weight:600;margin-bottom:6px">{name}</div>'
+            f'<div style="font-size:24px;font-weight:800;color:#e2e6f0;margin-bottom:4px">${p:,.2f}</div>'
+            f'<div style="font-size:16px;font-weight:700;color:{cc};margin-bottom:3px">{s}{c:.2f}% dziś</div>'
+            f'<div style="font-size:12px;color:{"#4ade80" if c5>=0 else "#f87171"};margin-bottom:8px">{("+" if c5>=0 else "")}{c5:.1f}% tydzień</div>'
+            f'<div style="display:flex;gap:5px">{a50_html}{a200_html}</div>'
             f'</div>'
         )
 
@@ -534,34 +576,33 @@ if page == "🌍  Market Radar":
         if not data: return ""
         p=data["price"]; c=data["chg1d"]
         d=data.get("vix_dir","dn")
-        # VIX: niski = spokój, wysoki = strach
         if p<15:   vc,vl="#26ff7f","Spokój"
         elif p<20: vc,vl="#4ade80","Niski"
         elif p<25: vc,vl="#f0c040","Umiarkowany"
         elif p<30: vc,vl="#fb923c","Podwyższony"
-        else:      vc,vl="#e84545","Strach"
+        else:      vc,vl="#e84545","Strach/Panika"
         dir_sym=("↑" if d=="up" else "↓")
-        dir_col=("#e84545" if d=="up" else "#26ff7f")  # VIX rośnie = źle
+        dir_col=("#e84545" if d=="up" else "#26ff7f")
         cc=("#e84545" if c>=0 else "#26ff7f")
         return (
-            f'<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:10px 14px">'
-            f'<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:4px">VIX — Indeks Zmienności</div>'
-            f'<div style="display:flex;align-items:center;gap:8px">'
-            f'<div style="font-size:18px;font-weight:800;color:{vc}">{p:.1f}</div>'
-            f'<div style="font-size:20px;font-weight:900;color:{dir_col}">{dir_sym}</div>'
+            f'<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:14px 16px">'
+            f'<div style="font-size:11px;color:#7a8299;font-weight:600;margin-bottom:6px">VIX — Zmienność</div>'
+            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+            f'<div style="font-size:28px;font-weight:900;color:{vc}">{p:.1f}</div>'
+            f'<div style="font-size:26px;font-weight:900;color:{dir_col}">{dir_sym}</div>'
             f'</div>'
-            f'<div style="font-size:12px;font-weight:700;color:{vc};margin-top:2px">{vl}</div>'
-            f'<div style="font-size:10px;color:{cc};margin-top:1px">{"+" if c>=0 else ""}{c:.2f}% dziś</div>'
-            f'<div style="font-size:9px;color:#7a8299;margin-top:4px">VIX↑ = strach · VIX↓ = spokój</div>'
+            f'<div style="font-size:14px;font-weight:700;color:{vc};margin-bottom:3px">{vl}</div>'
+            f'<div style="font-size:12px;color:{cc};margin-bottom:6px">{"+" if c>=0 else ""}{c:.2f}% dziś</div>'
+            f'<div style="font-size:9px;color:#555">VIX↑ = strach · VIX↓ = spokój</div>'
             f'</div>'
         )
 
     def fg_card(data):
         if not data or data.get("value") is None:
             return (
-                '<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:10px 14px">'
-                '<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:4px">Fear & Greed Index</div>'
-                '<div style="font-size:14px;color:#555">Brak danych</div></div>'
+                '<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:14px 16px">'
+                '<div style="font-size:11px;color:#7a8299;font-weight:600;margin-bottom:4px">Fear & Greed Index</div>'
+                '<div style="font-size:13px;color:#555;margin-top:6px">Obliczanie...</div></div>'
             )
         v=data["value"]; lbl=data["label"]
         if v<=20:   vc,emoji="#e84545","😱"
@@ -569,21 +610,22 @@ if page == "🌍  Market Radar":
         elif v<=60: vc,emoji="#f0c040","😐"
         elif v<=80: vc,emoji="#4ade80","😊"
         else:       vc,emoji="#26ff7f","🤑"
-        bar=v
         return (
-            f'<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:10px 14px">'
-            f'<div style="font-size:10px;color:#7a8299;font-weight:600;margin-bottom:6px">Fear & Greed Index</div>'
-            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-            f'<div style="font-size:22px;font-weight:900;color:{vc}">{v}</div>'
-            f'<div style="font-size:18px">{emoji}</div>'
+            f'<div style="background:#161920;border:1px solid #252a3a;border-radius:8px;padding:14px 16px">'
+            f'<div style="font-size:11px;color:#7a8299;font-weight:600;margin-bottom:6px">Fear & Greed</div>'
+            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
+            f'<div style="font-size:28px;font-weight:900;color:{vc}">{v}</div>'
+            f'<div style="font-size:22px">{emoji}</div>'
             f'</div>'
-            f'<div style="font-size:11px;font-weight:700;color:{vc};margin-bottom:5px">{lbl}</div>'
-            f'<div style="height:6px;background:#252a3a;border-radius:3px">'
-            f'<div style="width:{bar}%;height:6px;background:linear-gradient(to right,#e84545,#f0c040,#26ff7f);border-radius:3px"></div>'
+            f'<div style="font-size:13px;font-weight:700;color:{vc};margin-bottom:5px">{lbl}</div>'
+            f'<div style="height:8px;background:#252a3a;border-radius:4px">'
+            f'<div style="width:{v}%;height:8px;background:linear-gradient(to right,#e84545,#f0c040,#26ff7f);border-radius:4px"></div>'
             f'</div>'
-            f'<div style="display:flex;justify-content:space-between;font-size:8px;color:#555;margin-top:2px">'
+            f'<div style="display:flex;justify-content:space-between;font-size:9px;color:#555;margin-top:3px">'
             f'<span>Strach</span><span>Neutral</span><span>Chciwość</span>'
-            f'</div></div>'
+            f'</div>'
+            f'<div style="font-size:9px;color:#555;margin-top:4px">Obliczony z: RSI · VIX · Momentum · 52W</div>'
+            f'</div>'
         )
 
     # Render górny pasek
