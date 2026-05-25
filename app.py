@@ -909,7 +909,6 @@ if page == "🌍  Market Radar":
 # ═══════════════════════════════════════════════════════════════
 elif page == "📡  ETF Radar":
     st.markdown("# 📡 ETF Radar")
-    st.markdown("*Lista Jeff Suna — 122 ETF · Przepływ kapitału · TOP 10 · Quadrant*")
     st.markdown("---")
 
     # ── JEFF SUN ETF LIST ────────────────────────────────────────
@@ -1237,8 +1236,6 @@ elif page == "📡  ETF Radar":
     st.markdown("---")
 
     # ── IMPORT ────────────────────────────────────────────────
-    st.markdown("### 📥 Importuj listę spółek")
-    # Czytelne przyciski zamiast radio
     if "imp_tab" not in st.session_state: st.session_state["imp_tab"]="wl"
     ib1,ib2,ib3=st.columns(3)
     with ib1:
