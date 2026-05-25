@@ -1229,10 +1229,12 @@ elif page == "📡  ETF Radar":
               +f'<td style="{TD}">{tv}</td>'
               +f'</tr>')
     st.markdown(tbl_wrap(f'<table style="width:100%;border-collapse:collapse;min-width:1200px"><thead>{head}</thead><tbody>{body}</tbody></table>'),unsafe_allow_html=True)
-    st.markdown("---")
-    st.caption(f"Lista Jeff Suna — {len(JEFF_ETF)} ETF · Dane: Yahoo Finance · Cache 30 min")
 
-
+# ═══════════════════════════════════════════════════════════════
+# PAGE 3: STOCK RADAR
+# ═══════════════════════════════════════════════════════════════
+elif page == "🔬  Stock Radar":
+    st.markdown("# 🔬 Stock Radar")
     st.markdown("---")
 
     # ── IMPORT ────────────────────────────────────────────────
