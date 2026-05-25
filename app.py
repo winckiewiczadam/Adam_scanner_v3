@@ -234,19 +234,25 @@ def get_sector(etf):
         spy=get_spy(); ret=c.pct_change().dropna(); ret.index=ret.index.normalize()
         common=ret.index.intersection(spy.index)
         rs=calc_rs(ret.loc[common],spy.loc[common]) if len(common)>=20 else 50.0
-        # RS direction: teraz vs 5 dni temu
         rs_5d=calc_rs(ret.loc[common].iloc[:-5],spy.loc[common].iloc[:-5]) if len(common)>25 else rs
         rs_dir="up" if rs>rs_5d+1 else ("dn" if rs<rs_5d-1 else "flat")
-        # RVOL 50d, SMA50 check
         rvol50=calc_rvol(v,n=50)
         s50v=float(sma(c,50).iloc[-1]) if len(c)>=50 else float(c.mean())
         abv50=1 if float(c.iloc[-1])>=s50v else 0
         h52=float(h["High"].dropna().tail(252).max())
         price_now=float(c.iloc[-1])
         dist52_sec=round((price_now/h52-1)*100,1) if h52>0 else None
+        # Gap% = (Open dziś - Close wczoraj) / Close wczoraj × 100
+        o=h["Open"].dropna()
+        gap_pct=round((float(o.iloc[-1])-float(c.iloc[-2]))/float(c.iloc[-2])*100,2) if len(c)>=2 and len(o)>=1 else 0.0
+        # Świeca wczoraj: bycza czy niedźwiedzia
+        yest_open=float(o.iloc[-2]) if len(o)>=2 else float(c.iloc[-2])
+        yest_close=float(c.iloc[-2]) if len(c)>=2 else float(c.iloc[-1])
+        candle_yest="bull" if yest_close>yest_open else "bear"
         return {"rs":rs,"c1d":safe_pct(c,2),"c3d":safe_pct(c,4),"c5d":safe_pct(c,6),
                 "c20d":safe_pct(c,21),"c60d":safe_pct(c,61),
-                "rvol":rvol50,"rs_dir":rs_dir,"abv50":abv50,"dist52_sec":dist52_sec}
+                "rvol":rvol50,"rs_dir":rs_dir,"abv50":abv50,"dist52_sec":dist52_sec,
+                "gap_pct":gap_pct,"candle_yest":candle_yest}
     except: return None
 
 @st.cache_data(ttl=1800,show_spinner=False)
@@ -1040,7 +1046,7 @@ elif page == "📡  ETF Radar":
     with ec1:
         cat_sel=st.selectbox("Kategoria",["Wszystkie"]+ALL_CATS)
     with ec2:
-        sort_sel=st.selectbox("Sortuj wg",["RS Score","RVOL","Zmiana 5D%","Zmiana 20D%"])
+        sort_sel=st.selectbox("Sortuj wg",["RS Score","RVOL","Zmiana 5D%","Zmiana 20D%","Gap%"])
     with ec3:
         st.markdown("<br>",unsafe_allow_html=True)
         run_etf=st.button("🔄 Odśwież",use_container_width=True)
@@ -1076,9 +1082,10 @@ elif page == "📡  ETF Radar":
             "c20d":d.get("c20d",0),"c60d":d.get("c60d",0),
             "rvol":d.get("rvol",1),"dist52":d.get("dist52_sec"),
             "rs_dir":d.get("rs_dir","flat"),"abv50":d.get("abv50",0),
+            "gap_pct":d.get("gap_pct",0.0),"candle_yest":d.get("candle_yest","bull"),
         })
 
-    sort_key={"RS Score":"rs","RVOL":"rvol","Zmiana 5D%":"c5d","Zmiana 20D%":"c20d"}[sort_sel]
+    sort_key={"RS Score":"rs","RVOL":"rvol","Zmiana 5D%":"c5d","Zmiana 20D%":"c20d","Gap%":"gap_pct"}[sort_sel]
     rows_etf.sort(key=lambda x:x.get(sort_key,0),reverse=True)
 
     # ── TOP 10 WIDGETS ────────────────────────────────────────────
@@ -1149,7 +1156,7 @@ elif page == "📡  ETF Radar":
 
     # ── FULL TABLE ────────────────────────────────────────────────
     st.markdown(f"### Pełna tabela — {len(rows_etf)} ETF")
-    head=f'<thead><tr>{"".join(f"<th style=\"{TH}\">{c}</th>" for c in ["#","ETF","Nazwa","Kategoria","RS","RS↕","1D%","5D%","20D%","60D%","RVOL","52W","SMA50","Kwadrant","TV"])}</tr></thead>'
+    head=f'<thead><tr>{"".join(f"<th style=\"{TH}\">{c}</th>" for c in ["#","ETF","Nazwa","Kategoria","RS","RS↕","Gap%","Świeca","1D%","5D%","20D%","60D%","RVOL","52W","SMA50","Kwadrant","TV"])}</tr></thead>'
     body=""
     for i,r in enumerate(rows_etf,1):
         if r["c5d"]>=0 and r["c20d"]>=0: ql,qc="Strong","#26a65b"
@@ -1166,6 +1173,14 @@ elif page == "📡  ETF Radar":
         d52=r.get("dist52")
         d52_h=(dist52_html(d52) if d52 is not None else '<span style="color:#555">—</span>')
         tv=f'<a href="https://www.tradingview.com/chart/?symbol={r["etf"]}" target="_blank" style="color:#6c8eff;font-size:10px;font-weight:700;text-decoration:none">TV↗</a>'
+        # Gap%
+        gp=r.get("gap_pct",0.0)
+        gc="#26ff7f" if gp>0.5 else "#e84545" if gp<-0.5 else "#7a8299"
+        gap_html=f'<span style="color:{gc};font-weight:700;font-size:11px">{"+" if gp>=0 else ""}{gp:.1f}%</span>'
+        # Świeca wczoraj
+        cy=r.get("candle_yest","bull")
+        candle_html=('<span style="color:#26ff7f;font-size:14px" title="Bycza">▲</span>' if cy=="bull"
+                     else '<span style="color:#e84545;font-size:14px" title="Niedźwiedzia">▼</span>')
         body+=(f'<tr style="border-bottom:1px solid #0f1218">'
               +f'<td style="{TD};color:#555;font-size:10px">{i}</td>'
               +f'<td style="{TD};color:#6c8eff;font-weight:800;font-size:12px">{r["etf"]}</td>'
@@ -1173,6 +1188,8 @@ elif page == "📡  ETF Radar":
               +f'<td style="{TD};font-size:10px;color:#7a8299">{r["cat"]}</td>'
               +f'<td style="{TD}">{rs_bar_html(r["rs"])}</td>'
               +f'<td style="{TD}">{rd}</td>'
+              +f'<td style="{TD}">{gap_html}</td>'
+              +f'<td style="{TD};text-align:center">{candle_html}</td>'
               +f'<td style="{TD}">{chg_tag(r["c1d"])}</td>'
               +f'<td style="{TD}">{chg_tag(r["c5d"])}</td>'
               +f'<td style="{TD}">{chg_tag(r["c20d"])}</td>'
@@ -1183,7 +1200,7 @@ elif page == "📡  ETF Radar":
               +f'<td style="{TD}"><span style="color:{qc};font-size:10px;font-weight:700">{ql}</span></td>'
               +f'<td style="{TD}">{tv}</td>'
               +f'</tr>')
-    st.markdown(tbl_wrap(f'<table style="width:100%;border-collapse:collapse;min-width:1100px"><thead>{head}</thead><tbody>{body}</tbody></table>'),unsafe_allow_html=True)
+    st.markdown(tbl_wrap(f'<table style="width:100%;border-collapse:collapse;min-width:1200px"><thead>{head}</thead><tbody>{body}</tbody></table>'),unsafe_allow_html=True)
     st.markdown("---")
     st.caption(f"Lista Jeff Suna — {len(JEFF_ETF)} ETF · Dane: Yahoo Finance · Cache 30 min")
 
