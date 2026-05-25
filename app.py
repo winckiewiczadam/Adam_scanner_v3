@@ -480,7 +480,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     page = st.radio("",
-        ["🌍  Market Radar","🔬  Stock Radar","📚  Playbook","📋  Watchlisty"],
+        ["🌍  Market Radar","📡  ETF Radar","🔬  Stock Radar","📚  Playbook","📋  Watchlisty"],
         label_visibility="collapsed")
 
     st.markdown("---")
@@ -898,8 +898,296 @@ if page == "🌍  Market Radar":
 # ═══════════════════════════════════════════════════════════════
 # PAGE 2: STOCK RADAR
 # ═══════════════════════════════════════════════════════════════
-elif page == "🔬  Stock Radar":
-    st.markdown("# 🔬 Stock Radar")
+# ═══════════════════════════════════════════════════════════════
+# PAGE 2: ETF RADAR (Jeff Sun list)
+# ═══════════════════════════════════════════════════════════════
+elif page == "📡  ETF Radar":
+    st.markdown("# 📡 ETF Radar")
+    st.markdown("*Lista Jeff Suna — 122 ETF · Przepływ kapitału · TOP 10 · Quadrant*")
+    st.markdown("---")
+
+    # ── JEFF SUN ETF LIST ────────────────────────────────────────
+    JEFF_ETF = [
+        ("CIBR","Cybersecurity","💻 Tech & AI"),
+        ("NASA","Space Economy","🚀 Space"),
+        ("UNG","Natural Gas","⚡ Energy"),
+        ("IGV","US Tech / Software","💻 Tech & AI"),
+        ("UFO","Space Industry","🚀 Space"),
+        ("XES","Oil & Gas Equipment","⚡ Energy"),
+        ("SVIX","Short VIX","📊 Broad Market"),
+        ("IHF","Health Care Providers","🏥 Healthcare"),
+        ("CLOU","Cloud Infrastructure","💻 Tech & AI"),
+        ("USO","Crude Oil","⚡ Energy"),
+        ("DXYZ","Pre-IPO Unicorn","📊 Broad Market"),
+        ("TAN","Solar","⚡ Energy"),
+        ("MAGS","Magnificent 7","💻 Tech & AI"),
+        ("OIH","Large-Cap Oil Services","⚡ Energy"),
+        ("WCLD","Cloud Tech","💻 Tech & AI"),
+        ("DRAM","Memory","💻 Tech & AI"),
+        ("AIQ","AI Software","💻 Tech & AI"),
+        ("AMLP","Energy MLPs","⚡ Energy"),
+        ("SPMO","S&P 500 Momentum","📊 Broad Market"),
+        ("SMH","Semiconductor Giants","💻 Tech & AI"),
+        ("XSD","Semiconductors EW","💻 Tech & AI"),
+        ("XOP","Oil & Gas E&P","⚡ Energy"),
+        ("FCG","Natural Gas E&P","⚡ Energy"),
+        ("XHS","Healthcare Facilities","🏥 Healthcare"),
+        ("HYDR","Hydrogen Energy","⚡ Energy"),
+        ("SOXX","Broad Semiconductor","💻 Tech & AI"),
+        ("BUZZ","Social Media","💻 Tech & AI"),
+        ("ROBO","Robotics & Automation","💻 Tech & AI"),
+        ("BOTZ","AI & Robotics","💻 Tech & AI"),
+        ("BAI","AI & Tech Active","💻 Tech & AI"),
+        ("EWY","South Korea","🌍 Kraje"),
+        ("QTUM","Quantum / AI","💻 Tech & AI"),
+        ("WGMI","Crypto Mining","🪙 Crypto"),
+        ("IYZ","Telecommunications","📡 Komunikacja"),
+        ("ICLN","Clean Energy","⚡ Energy"),
+        ("MEME","Meme Stocks","📊 Broad Market"),
+        ("DRIV","EV & Autonomous","🚗 EV & Auto"),
+        ("FFTY","IBD 50","📊 Broad Market"),
+        ("XSW","Software EW","💻 Tech & AI"),
+        ("KIE","Insurance","🏦 Finanse"),
+        ("ARKX","ARK Space","🚀 Space"),
+        ("PBW","Clean Energy","⚡ Energy"),
+        ("FDN","US Internet Giants","💻 Tech & AI"),
+        ("IAI","Broker-Dealers","🏦 Finanse"),
+        ("SLX","Steel","🏗️ Materiały"),
+        ("COPX","Copper Miners","🏗️ Materiały"),
+        ("SLV","Silver","🥇 Commodities"),
+        ("IYT","Transportation","🏗️ Infrastruktura"),
+        ("ARKW","ARK Internet","💻 Tech & AI"),
+        ("IHI","Med-Tech Surgical","🏥 Healthcare"),
+        ("BOAT","Global Shipping","🏗️ Infrastruktura"),
+        ("XTL","Telecom","📡 Komunikacja"),
+        ("GENZ","Global Gaming","🎮 Gaming"),
+        ("PEJ","Leisure & Travel","✈️ Travel"),
+        ("XAR","Aerospace & Defense EW","🛡️ Obrona"),
+        ("XHE","Health Devices","🏥 Healthcare"),
+        ("PBJ","Food & Beverage","🛒 Consumer"),
+        ("BETZ","Sports Betting","🎮 Gaming"),
+        ("ARGT","Argentinian Equities","🌍 Kraje"),
+        ("PPH","Large-Cap Pharma","🏥 Healthcare"),
+        ("XTN","Trucking","🏗️ Infrastruktura"),
+        ("GUNR","Upstream Natural Res","⚡ Energy"),
+        ("GNR","Natural Resources","🏗️ Materiały"),
+        ("BLOK","Blockchain","🪙 Crypto"),
+        ("SIL","Silver Miners","🥇 Commodities"),
+        ("IPAY","Digital Payments","🏦 Finanse"),
+        ("KRE","Regional Banks","🏦 Finanse"),
+        ("KBE","Large-Cap Banking","🏦 Finanse"),
+        ("CNBS","Cannabis","🏥 Healthcare"),
+        ("ESPO","E-Sports","🎮 Gaming"),
+        ("IBUY","Global E-Commerce","🛒 Consumer"),
+        ("KCE","Capital Markets","🏦 Finanse"),
+        ("EWZ","Brazilian Equities","🌍 Kraje"),
+        ("XRT","Retail","🛒 Consumer"),
+        ("SHLD","Global Defense Tech","🛡️ Obrona"),
+        ("FDRV","EV & Future Transport","🚗 EV & Auto"),
+        ("ARKQ","ARK Robotics","💻 Tech & AI"),
+        ("SILJ","Junior Silver Miners","🥇 Commodities"),
+        ("MOO","Global Agricultural","🌿 Agri"),
+        ("ITA","Aerospace & Defense","🛡️ Obrona"),
+        ("IGF","Global Infrastructure","🏗️ Infrastruktura"),
+        ("SCHH","U.S. REITs","🏠 REIT"),
+        ("PHO","Water Purification","🌿 Agri"),
+        ("PLTM","Platinum","🥇 Commodities"),
+        ("JETS","Airlines","✈️ Travel"),
+        ("ARKF","ARK Fintech","🏦 Finanse"),
+        ("XHB","Homebuilders EW","🏠 REIT"),
+        ("GLD","Gold","🥇 Commodities"),
+        ("WOOD","Timber & Lumber","🌿 Agri"),
+        ("ILF","Latin America 40","🌍 Kraje"),
+        ("ITB","Homebuilders","🏠 REIT"),
+        ("SOLZ","Solana Spot","🪙 Crypto"),
+        ("XRPI","XRP Spot","🪙 Crypto"),
+        ("GRID","Infrastructure Electrical","🏗️ Infrastruktura"),
+        ("IBIT","Bitcoin Spot","🪙 Crypto"),
+        ("GDXJ","Junior Gold Miners","🥇 Commodities"),
+        ("GDX","Gold Miners","🥇 Commodities"),
+        ("XME","Metals & Mining","🏗️ Materiały"),
+        ("LIT","Lithium & Battery","🚗 EV & Auto"),
+        ("IDGT","Digital Infrastructure","💻 Tech & AI"),
+        ("ARKK","ARK Innovation","💻 Tech & AI"),
+        ("ETHA","Ether Spot","🪙 Crypto"),
+        ("ASHR","China A-Shares","🌍 Kraje"),
+        ("KWEB","Chinese Tech","🌍 Kraje"),
+        ("FXI","China Large-Caps","🌍 Kraje"),
+        ("GXC","China ETF","🌍 Kraje"),
+        ("PBE","Dynamic Biotech","🏥 Healthcare"),
+        ("REMX","Rare Earths","🏗️ Materiały"),
+        ("XBI","Biotech EW","🏥 Healthcare"),
+        ("CHIQ","China Consumer","🌍 Kraje"),
+        ("IBB","Biotech Megacap","🏥 Healthcare"),
+        ("XPH","Pharmaceuticals EW","🏥 Healthcare"),
+        ("KURE","China Health","🌍 Kraje"),
+        ("PALL","Palladium","🥇 Commodities"),
+        ("SOCL","Social Media","💻 Tech & AI"),
+        ("URNM","Uranium Miners","⚡ Energy"),
+        ("ARKG","ARK Genomics","🏥 Healthcare"),
+        ("URA","Uranium","⚡ Energy"),
+        ("NLR","Nuclear Power","⚡ Energy"),
+        ("PAVE","U.S. Infrastructure","🏗️ Infrastruktura"),
+        ("EATZ","Global Restaurant","✈️ Travel"),
+        ("TLT","20Y Treasury Bonds","📊 Broad Market"),
+    ]
+    JEFF_ETF_TICKERS=[e for e,_,__ in JEFF_ETF]
+    JEFF_ETF_META={e:{"name":n,"cat":c} for e,n,c in JEFF_ETF}
+    ALL_CATS=sorted(set(c for _,_,c in JEFF_ETF))
+
+    # ── CONTROLS ─────────────────────────────────────────────────
+    ec1,ec2,ec3=st.columns([2,2,1])
+    with ec1:
+        cat_sel=st.selectbox("Kategoria",["Wszystkie"]+ALL_CATS)
+    with ec2:
+        sort_sel=st.selectbox("Sortuj wg",["RS Score","RVOL","Zmiana 5D%","Zmiana 20D%"])
+    with ec3:
+        st.markdown("<br>",unsafe_allow_html=True)
+        run_etf=st.button("🔄 Odśwież",use_container_width=True)
+
+    if run_etf:
+        if "etf_data" in st.session_state:
+            del st.session_state["etf_data"]
+
+    # ── LOAD DATA ─────────────────────────────────────────────────
+    if "etf_data" not in st.session_state:
+        prog=st.progress(0); txt=st.empty()
+        etf_data={}
+        for i,etf in enumerate(JEFF_ETF_TICKERS):
+            prog.progress((i+1)/len(JEFF_ETF_TICKERS))
+            txt.markdown(f"Pobieram `{etf}` — {i+1}/{len(JEFF_ETF_TICKERS)}")
+            sd=get_sector(etf)
+            etf_data[etf]=sd or {"rs":50,"c1d":0,"c3d":0,"c5d":0,"c20d":0,"c60d":0,"rvol":1,"dist52_sec":None}
+            time.sleep(0.08)
+        prog.empty(); txt.empty()
+        st.session_state["etf_data"]=etf_data
+
+    etf_raw=st.session_state["etf_data"]
+
+    # Build rows
+    rows_etf=[]
+    for etf in JEFF_ETF_TICKERS:
+        d=etf_raw.get(etf,{})
+        meta=JEFF_ETF_META.get(etf,{"name":etf,"cat":"—"})
+        if cat_sel!="Wszystkie" and meta["cat"]!=cat_sel: continue
+        rows_etf.append({
+            "etf":etf,"name":meta["name"],"cat":meta["cat"],
+            "rs":d.get("rs",50),"c1d":d.get("c1d",0),"c5d":d.get("c5d",0),
+            "c20d":d.get("c20d",0),"c60d":d.get("c60d",0),
+            "rvol":d.get("rvol",1),"dist52":d.get("dist52_sec"),
+            "rs_dir":d.get("rs_dir","flat"),"abv50":d.get("abv50",0),
+        })
+
+    sort_key={"RS Score":"rs","RVOL":"rvol","Zmiana 5D%":"c5d","Zmiana 20D%":"c20d"}[sort_sel]
+    rows_etf.sort(key=lambda x:x.get(sort_key,0),reverse=True)
+
+    # ── TOP 10 WIDGETS ────────────────────────────────────────────
+    st.markdown("### TOP 10")
+    t1,t2,t3,t4=st.columns(4)
+
+    def top10_card(title, color, items, key_fn, fmt_fn):
+        rows_h="".join(
+            f'<div style="display:flex;justify-content:space-between;align-items:center;'
+            f'padding:4px 0;border-bottom:1px solid #1a1e2a">'
+            f'<span style="font-size:10px;color:#7a8299;min-width:18px">{i+1}</span>'
+            f'<span style="font-size:11px;font-weight:700;color:#6c8eff;flex:1;padding:0 6px">{r["etf"]}</span>'
+            f'<span style="font-size:10px;color:#b0b8cc;flex:2;padding-right:6px">{r["name"][:16]}</span>'
+            f'<span style="font-size:11px;font-weight:800;color:{color}">{fmt_fn(key_fn(r))}</span>'
+            f'</div>'
+            for i,r in enumerate(sorted(rows_etf,key=key_fn,reverse=True)[:10])
+        )
+        return (f'<div style="background:#161920;border:1px solid #252a3a;border-top:3px solid {color};'
+                f'border-radius:8px;padding:10px 12px">'
+                f'<div style="font-size:11px;font-weight:700;color:{color};margin-bottom:8px">{title}</div>'
+                f'{rows_h}</div>')
+
+    with t1: st.markdown(top10_card("🏆 TOP RS Score","#6c8eff",rows_etf,lambda r:r["rs"],lambda v:f"{v:.0f}"),unsafe_allow_html=True)
+    with t2: st.markdown(top10_card("🔵 TOP RVOL","#60a5fa",rows_etf,lambda r:r["rvol"],lambda v:f"{v:.1f}x"),unsafe_allow_html=True)
+    with t3: st.markdown(top10_card("📈 TOP 5D%","#26ff7f",rows_etf,lambda r:r["c5d"],lambda v:f"{v:+.1f}%"),unsafe_allow_html=True)
+    with t4: st.markdown(top10_card("📅 TOP 20D%","#4ade80",rows_etf,lambda r:r["c20d"],lambda v:f"{v:+.1f}%"),unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── QUADRANT CHART ────────────────────────────────────────────
+    st.markdown("### Quadrant: 5D% vs 20D%")
+    try:
+        import plotly.graph_objects as go
+        colors_q=[]
+        for r in rows_etf:
+            if r["c5d"]>=0 and r["c20d"]>=0: colors_q.append("#26a65b")
+            elif r["c5d"]>=0:                  colors_q.append("#6c8eff")
+            elif r["c20d"]>=0:                 colors_q.append("#f0c040")
+            else:                               colors_q.append("#e84545")
+        xs=[r["c5d"] for r in rows_etf]; ys=[r["c20d"] for r in rows_etf]
+        sizes=[max(6,min(20,r["rs"]*.2)) for r in rows_etf]
+        hover=[f"<b>{r['etf']}</b> — {r['name']}<br>RS:{r['rs']:.0f} 5D:{r['c5d']:+.1f}% 20D:{r['c20d']:+.1f}% RVOL:{r['rvol']:.1f}x" for r in rows_etf]
+        fig=go.Figure()
+        if xs and ys:
+            mx2=max(abs(v) for v in xs+[1])*1.15; my2=max(abs(v) for v in ys+[1])*1.15
+            for x1,y1,x2,y2,fc in [(0,0,mx2,my2,"rgba(38,166,91,0.06)"),(-mx2,0,0,my2,"rgba(240,192,64,0.05)"),(0,-my2,mx2,0,"rgba(108,142,255,0.05)"),(-mx2,-my2,0,0,"rgba(228,69,69,0.07)")]:
+                fig.add_shape(type="rect",x0=x1,y0=y1,x1=x2,y1=y2,fillcolor=fc,line_width=0,layer="below")
+            fig.add_hline(y=0,line_color="#252a3a",line_width=1)
+            fig.add_vline(x=0,line_color="#252a3a",line_width=1)
+            for lbl,ax,ay,col in [("STRONG",mx2*.65,my2*.82,"#26a65b"),("IMPROVING",mx2*.65,-my2*.82,"#6c8eff"),("WEAKENING",-mx2*.6,my2*.82,"#f0c040"),("WEAK",-mx2*.6,-my2*.82,"#e84545")]:
+                fig.add_annotation(x=ax,y=ay,text=lbl,showarrow=False,font=dict(size=10,color=col),opacity=.55)
+        fig.add_trace(go.Scatter(x=xs,y=ys,mode="markers+text",
+            marker=dict(size=sizes,color=colors_q,opacity=.85,line=dict(width=1,color="rgba(255,255,255,0.1)")),
+            text=[r["etf"] for r in rows_etf],textposition="top center",
+            textfont=dict(size=7,color="#8a90a0"),
+            hovertemplate="%{customdata}<extra></extra>",customdata=hover))
+        fig.update_layout(height=450,paper_bgcolor="#0d0f14",plot_bgcolor="#0d0f14",
+            font=dict(family="Segoe UI",color="#e2e6f0"),
+            xaxis=dict(title=dict(text="Zmiana 5D%",font=dict(size=11)),gridcolor="#1e2230",tickfont=dict(size=10)),
+            yaxis=dict(title=dict(text="Zmiana 20D%",font=dict(size=11)),gridcolor="#1e2230",tickfont=dict(size=10)),
+            showlegend=False,margin=dict(l=60,r=20,t=10,b=50),
+            hoverlabel=dict(bgcolor="#161920",bordercolor="#252a3a",font=dict(size=12,color="#e2e6f0")))
+        st.plotly_chart(fig,use_container_width=True)
+    except Exception as e:
+        st.warning(f"Plotly error: {e}")
+
+    st.markdown("---")
+
+    # ── FULL TABLE ────────────────────────────────────────────────
+    st.markdown(f"### Pełna tabela — {len(rows_etf)} ETF")
+    head=f'<thead><tr>{"".join(f"<th style=\"{TH}\">{c}</th>" for c in ["#","ETF","Nazwa","Kategoria","RS","RS↕","1D%","5D%","20D%","60D%","RVOL","52W","SMA50","Kwadrant","TV"])}</tr></thead>'
+    body=""
+    for i,r in enumerate(rows_etf,1):
+        if r["c5d"]>=0 and r["c20d"]>=0: ql,qc="Strong","#26a65b"
+        elif r["c5d"]>=0:                  ql,qc="Improving","#6c8eff"
+        elif r["c20d"]>=0:                 ql,qc="Weakening","#f0c040"
+        else:                               ql,qc="Weak","#e84545"
+        rv=r["rvol"]; rvc="#60a5fa" if rv>=2 else "#93c5fd" if rv>=1.5 else "#bfdbfe" if rv>=1 else "#7a8299"
+        d=r.get("rs_dir","flat")
+        rd=('<span style="color:#26ff7f;font-weight:700">↑</span>' if d=="up" else
+            '<span style="color:#e84545;font-weight:700">↓</span>' if d=="dn" else
+            '<span style="color:#7a8299">→</span>')
+        abv=('<span style="color:#26a65b;font-size:9px;font-weight:700">▲</span>'
+             if r.get("abv50") else '<span style="color:#e84545;font-size:9px">▼</span>')
+        d52=r.get("dist52")
+        d52_h=(dist52_html(d52) if d52 is not None else '<span style="color:#555">—</span>')
+        tv=f'<a href="https://www.tradingview.com/chart/?symbol={r["etf"]}" target="_blank" style="color:#6c8eff;font-size:10px;font-weight:700;text-decoration:none">TV↗</a>'
+        body+=(f'<tr style="border-bottom:1px solid #0f1218">'
+              +f'<td style="{TD};color:#555;font-size:10px">{i}</td>'
+              +f'<td style="{TD};color:#6c8eff;font-weight:800;font-size:12px">{r["etf"]}</td>'
+              +f'<td style="{TD};color:#b0b8cc;font-size:11px">{r["name"][:22]}</td>'
+              +f'<td style="{TD};font-size:10px;color:#7a8299">{r["cat"]}</td>'
+              +f'<td style="{TD}">{rs_bar_html(r["rs"])}</td>'
+              +f'<td style="{TD}">{rd}</td>'
+              +f'<td style="{TD}">{chg_tag(r["c1d"])}</td>'
+              +f'<td style="{TD}">{chg_tag(r["c5d"])}</td>'
+              +f'<td style="{TD}">{chg_tag(r["c20d"])}</td>'
+              +f'<td style="{TD}">{chg_tag(r["c60d"])}</td>'
+              +f'<td style="{TD};color:{rvc};font-weight:{"700" if rv>=1 else "400"}">{rv:.1f}x</td>'
+              +f'<td style="{TD}">{d52_h}</td>'
+              +f'<td style="{TD}">{abv}</td>'
+              +f'<td style="{TD}"><span style="color:{qc};font-size:10px;font-weight:700">{ql}</span></td>'
+              +f'<td style="{TD}">{tv}</td>'
+              +f'</tr>')
+    st.markdown(tbl_wrap(f'<table style="width:100%;border-collapse:collapse;min-width:1100px"><thead>{head}</thead><tbody>{body}</tbody></table>'),unsafe_allow_html=True)
+    st.markdown("---")
+    st.caption(f"Lista Jeff Suna — {len(JEFF_ETF)} ETF · Dane: Yahoo Finance · Cache 30 min")
+
+
     st.markdown("---")
 
     # ── IMPORT ────────────────────────────────────────────────
