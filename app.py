@@ -1096,7 +1096,7 @@ elif page == "📡  ETF Radar":
         rows_h="".join(
             f'<div style="display:flex;justify-content:space-between;align-items:center;'
             f'padding:4px 0;border-bottom:1px solid #1a1e2a">'
-            f'<span style="font-size:10px;color:#7a8299;min-width:18px">{i+1}</span>'
+            f'<span style="font-size:10px;color:#555;min-width:18px">{i+1}</span>'
             f'<span style="font-size:11px;font-weight:700;color:#6c8eff;flex:1;padding:0 6px">{r["etf"]}</span>'
             f'<span style="font-size:10px;color:#b0b8cc;flex:2;padding-right:6px">{r["name"][:16]}</span>'
             f'<span style="font-size:11px;font-weight:800;color:{color}">{fmt_fn(key_fn(r))}</span>'
@@ -1115,42 +1115,71 @@ elif page == "📡  ETF Radar":
 
     st.markdown("---")
 
-    # ── QUADRANT CHART ────────────────────────────────────────────
-    st.markdown("### Quadrant: 5D% vs 20D%")
-    try:
-        import plotly.graph_objects as go
-        colors_q=[]
-        for r in rows_etf:
-            if r["c5d"]>=0 and r["c20d"]>=0: colors_q.append("#26a65b")
-            elif r["c5d"]>=0:                  colors_q.append("#6c8eff")
-            elif r["c20d"]>=0:                 colors_q.append("#f0c040")
-            else:                               colors_q.append("#e84545")
-        xs=[r["c5d"] for r in rows_etf]; ys=[r["c20d"] for r in rows_etf]
-        sizes=[max(6,min(20,r["rs"]*.2)) for r in rows_etf]
-        hover=[f"<b>{r['etf']}</b> — {r['name']}<br>RS:{r['rs']:.0f} 5D:{r['c5d']:+.1f}% 20D:{r['c20d']:+.1f}% RVOL:{r['rvol']:.1f}x" for r in rows_etf]
-        fig=go.Figure()
-        if xs and ys:
-            mx2=max(abs(v) for v in xs+[1])*1.15; my2=max(abs(v) for v in ys+[1])*1.15
-            for x1,y1,x2,y2,fc in [(0,0,mx2,my2,"rgba(38,166,91,0.06)"),(-mx2,0,0,my2,"rgba(240,192,64,0.05)"),(0,-my2,mx2,0,"rgba(108,142,255,0.05)"),(-mx2,-my2,0,0,"rgba(228,69,69,0.07)")]:
-                fig.add_shape(type="rect",x0=x1,y0=y1,x1=x2,y1=y2,fillcolor=fc,line_width=0,layer="below")
-            fig.add_hline(y=0,line_color="#252a3a",line_width=1)
-            fig.add_vline(x=0,line_color="#252a3a",line_width=1)
-            for lbl,ax,ay,col in [("STRONG",mx2*.65,my2*.82,"#26a65b"),("IMPROVING",mx2*.65,-my2*.82,"#6c8eff"),("WEAKENING",-mx2*.6,my2*.82,"#f0c040"),("WEAK",-mx2*.6,-my2*.82,"#e84545")]:
-                fig.add_annotation(x=ax,y=ay,text=lbl,showarrow=False,font=dict(size=10,color=col),opacity=.55)
-        fig.add_trace(go.Scatter(x=xs,y=ys,mode="markers+text",
-            marker=dict(size=sizes,color=colors_q,opacity=.85,line=dict(width=1,color="rgba(255,255,255,0.1)")),
-            text=[r["etf"] for r in rows_etf],textposition="top center",
-            textfont=dict(size=7,color="#8a90a0"),
-            hovertemplate="%{customdata}<extra></extra>",customdata=hover))
-        fig.update_layout(height=450,paper_bgcolor="#0d0f14",plot_bgcolor="#0d0f14",
-            font=dict(family="Segoe UI",color="#e2e6f0"),
-            xaxis=dict(title=dict(text="Zmiana 5D%",font=dict(size=11)),gridcolor="#1e2230",tickfont=dict(size=10)),
-            yaxis=dict(title=dict(text="Zmiana 20D%",font=dict(size=11)),gridcolor="#1e2230",tickfont=dict(size=10)),
-            showlegend=False,margin=dict(l=60,r=20,t=10,b=50),
-            hoverlabel=dict(bgcolor="#161920",bordercolor="#252a3a",font=dict(size=12,color="#e2e6f0")))
-        st.plotly_chart(fig,use_container_width=True)
-    except Exception as e:
-        st.warning(f"Plotly error: {e}")
+    # ── INSIGHTS — 4 wnioski ─────────────────────────────────────
+    st.markdown("### 🧠 Insights — gdzie są pieniądze")
+
+    def insight_card(title, color, icon, desc, items, val_fn, fmt_fn):
+        if not items:
+            return (f'<div style="background:#161920;border:1px solid #252a3a;border-top:3px solid {color};'
+                    f'border-radius:8px;padding:12px 14px;height:100%">'
+                    f'<div style="font-size:12px;font-weight:700;color:{color};margin-bottom:4px">{icon} {title}</div>'
+                    f'<div style="font-size:10px;color:#555;margin-bottom:8px">{desc}</div>'
+                    f'<div style="color:#555;font-size:11px">Brak danych</div></div>')
+        rows_h="".join(
+            f'<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #1a1e2a">'
+            f'<div style="display:flex;align-items:center;gap:6px;flex:1">'
+            f'<span style="font-size:12px;font-weight:800;color:#6c8eff;min-width:40px">{r["etf"]}</span>'
+            f'<span style="font-size:10px;color:#7a8299">{r["name"][:18]}</span></div>'
+            f'<span style="font-size:12px;font-weight:800;color:{color}">{fmt_fn(val_fn(r))}</span>'
+            f'</div>'
+            for r in items
+        )
+        return (f'<div style="background:#161920;border:1px solid #252a3a;border-top:3px solid {color};'
+                f'border-radius:8px;padding:12px 14px">'
+                f'<div style="font-size:12px;font-weight:700;color:{color};margin-bottom:4px">{icon} {title}</div>'
+                f'<div style="font-size:10px;color:#7a8299;margin-bottom:10px">{desc}</div>'
+                f'{rows_h}</div>')
+
+    i1,i2,i3,i4=st.columns(4)
+
+    # Panel 1 — Gorące pieniądze: TOP 5 RVOL
+    hot=sorted(rows_etf,key=lambda r:r["rvol"],reverse=True)[:5]
+    with i1:
+        st.markdown(insight_card(
+            "Gorące pieniądze","#f59e0b","🔥",
+            "Top 5 RVOL — gdzie instytucje działają aktywnie TERAZ",
+            hot, lambda r:r["rvol"], lambda v:f"{v:.1f}x"
+        ),unsafe_allow_html=True)
+
+    # Panel 2 — Liderzy momentum: TOP 5 po 5D% z RS > 70
+    momentum=[r for r in rows_etf if r["rs"]>70 and r["c5d"]>0]
+    momentum=sorted(momentum,key=lambda r:r["c5d"],reverse=True)[:5]
+    with i2:
+        st.markdown(insight_card(
+            "Liderzy momentum","#26ff7f","💪",
+            "Top 5D% gdzie RS > 70 — silny wzrost poparty siłą",
+            momentum, lambda r:r["c5d"], lambda v:f"{v:+.1f}%"
+        ),unsafe_allow_html=True)
+
+    # Panel 3 — Przyspieszające (rotacja kapitału): RS↑ + 5D%>0 + RVOL>1.2
+    rotating=[r for r in rows_etf if r.get("rs_dir")=="up" and r["c5d"]>0 and r["rvol"]>1.2]
+    rotating=sorted(rotating,key=lambda r:r["c5d"],reverse=True)[:5]
+    with i3:
+        st.markdown(insight_card(
+            "Rotacja kapitału","#c084fc","🚀",
+            "RS↑ + 5D%>0 + RVOL>1.2 — pieniądze płyną tu TERAZ",
+            rotating, lambda r:r["c5d"], lambda v:f"{v:+.1f}%"
+        ),unsafe_allow_html=True)
+
+    # Panel 4 — Słabnące (unikaj): RS↓ + 5D%<0
+    weakening=[r for r in rows_etf if r.get("rs_dir")=="dn" and r["c5d"]<0]
+    weakening=sorted(weakening,key=lambda r:r["c5d"])[:5]
+    with i4:
+        st.markdown(insight_card(
+            "Unikaj","#e84545","⚠️",
+            "RS↓ + 5D%<0 — odpływ kapitału, nie szukaj tu spółek",
+            weakening, lambda r:r["c5d"], lambda v:f"{v:+.1f}%"
+        ),unsafe_allow_html=True)
 
     st.markdown("---")
 
