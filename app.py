@@ -492,20 +492,23 @@ with st.sidebar:
     st.markdown("---")
     st.markdown('<div style="font-size:9px;color:#555;line-height:1.8">Dane: Yahoo Finance<br>⚠️ Tylko edukacyjnie<br>Nie jest poradą inwest.</div>', unsafe_allow_html=True)
 
-@st.cache_data(ttl=60,show_spinner=False)  # TTL 1 minuta dla debugowania
+@st.cache_data(ttl=900,show_spinner=False)
 def get_market_overview():
     """Pobiera SPY/QQQ/IWM/VIX + Fear&Greed"""
     result={}
     for ticker,name in [("SPY","S&P 500"),("QQQ","NASDAQ 100"),("IWM","Russell 2000"),("^VIX","VIX")]:
         try:
             import datetime as _dt
-            # Pobierz ostatnie 5 dni żeby mieć pewność aktualnych danych
             end=_dt.datetime.now()
             start=end-_dt.timedelta(days=400)
             h=yf.download(ticker, start=start, end=end,
-                          interval="1d", auto_adjust=True, progress=False)
+                          interval="1d", auto_adjust=False, progress=False)
             if h is None or len(h)<5: continue
-            c=h["Close"].squeeze().dropna()
+            # Użyj Adj Close jeśli dostępne, inaczej Close
+            if "Adj Close" in h.columns:
+                c=h["Adj Close"].squeeze().dropna()
+            else:
+                c=h["Close"].squeeze().dropna()
             price=float(c.iloc[-1])
             prev=float(c.iloc[-2]) if len(c)>=2 else price
             chg1d=round((price/prev-1)*100,2)
@@ -519,54 +522,49 @@ def get_market_overview():
                 "name":name,"price":round(price,2),
                 "chg1d":chg1d,"chg5d":chg5d,
                 "abv50":abv50,"abv200":abv200,"vix_dir":vix_dir,
-                "c_series":c,
-                "last_date":str(c.index[-1])  # debug: data ostatniej świecy
+                "c_series":c
             }
-        except Exception as e:
-            result[ticker]={"error":str(e)}
-            pass
+        except: pass
             # Trend VIX: rośnie czy spada
     # Fear & Greed — własne obliczenie z osobnego pobierania danych (1y history)
     try:
-        spy_h=yf.Ticker("SPY").history(period="1y",interval="1d",auto_adjust=True)
-        vix_h=yf.Ticker("^VIX").history(period="5d",interval="1d",auto_adjust=True)
+        import datetime as _dt
+        end=_dt.datetime.now(); start=end-_dt.timedelta(days=400)
+        spy_h=yf.download("SPY", start=start, end=end,
+                          interval="1d", auto_adjust=False, progress=False)
+        vix_h=yf.download("^VIX", start=start, end=end,
+                          interval="1d", auto_adjust=False, progress=False)
         fg_parts=[]
 
         if spy_h is not None and len(spy_h)>=16:
-            spy_c=spy_h["Close"].dropna()
-            # Użyj aktualnej ceny z fast_info jeśli dostępna
+            spy_c=(spy_h["Adj Close"] if "Adj Close" in spy_h.columns else spy_h["Close"]).squeeze().dropna()
             spy_price=result["SPY"]["price"] if "SPY" in result else float(spy_c.iloc[-1])
 
             # 1. RSI SPY 14D
-            if len(spy_c)>=16:
-                delta=spy_c.diff()
-                gain=delta.clip(lower=0).rolling(14).mean()
-                loss=(-delta.clip(upper=0)).rolling(14).mean()
-                rs=gain/(loss.replace(0,np.nan))
-                rsi=float((100-100/(1+rs)).iloc[-1])
-                if not np.isnan(rsi): fg_parts.append(rsi)
+            delta=spy_c.diff()
+            gain=delta.clip(lower=0).rolling(14).mean()
+            loss=(-delta.clip(upper=0)).rolling(14).mean()
+            rs=gain/(loss.replace(0,np.nan))
+            rsi_val=float((100-100/(1+rs)).iloc[-1])
+            if not np.isnan(rsi_val): fg_parts.append(rsi_val)
 
             # 2. Momentum vs SMA125
             if len(spy_c)>=126:
                 s125=float(sma(spy_c,125).iloc[-1])
                 mom_pct=(spy_price/s125-1)*100
-                mom_score=max(0,min(100,50+mom_pct*4))
-                fg_parts.append(mom_score)
+                fg_parts.append(max(0,min(100,50+mom_pct*4)))
 
             # 3. 52W High proximity
             if len(spy_c)>=252:
                 h52=float(spy_c.tail(252).max())
-                h52_score=max(0,min(100,(spy_price/h52)*100))
-                fg_parts.append(h52_score)
+                fg_parts.append(max(0,min(100,(spy_price/h52)*100)))
 
         # 4. VIX score
         vix_price=result["^VIX"]["price"] if "^VIX" in result else 20.0
-        vix_score=max(0,min(100,100-(vix_price-10)*2.5))
-        fg_parts.append(vix_score)
+        fg_parts.append(max(0,min(100,100-(vix_price-10)*2.5)))
 
         if fg_parts:
-            fg_val=round(sum(fg_parts)/len(fg_parts))
-            fg_val=max(0,min(100,fg_val))
+            fg_val=max(0,min(100,round(sum(fg_parts)/len(fg_parts))))
             if fg_val<=20:   fg_lbl="Extreme Fear"
             elif fg_val<=40: fg_lbl="Fear"
             elif fg_val<=60: fg_lbl="Neutral"
@@ -675,10 +673,6 @@ if page == "🌍  Market Radar":
     with mc3: st.markdown(idx_card("IWM","Russell 2000",mkt.get("IWM")),unsafe_allow_html=True)
     with mc4: st.markdown(vix_card(mkt.get("^VIX")),unsafe_allow_html=True)
     with mc5: st.markdown(fg_card(mkt.get("fear_greed")),unsafe_allow_html=True)
-
-    # Debug — data ostatniej świecy
-    spy_d=mkt.get("SPY",{})
-    st.caption(f"Debug — SPY cena: ${spy_d.get('price','?')} | Ostatnia świeca: {spy_d.get('last_date','?')} | Błąd: {spy_d.get('error','brak')}")
 
     st.markdown("---")
 
