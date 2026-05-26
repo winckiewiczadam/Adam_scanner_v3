@@ -494,78 +494,83 @@ with st.sidebar:
 
 @st.cache_data(ttl=900,show_spinner=False)
 def get_market_overview():
-    """Pobiera SPY/QQQ/IWM/VIX + Fear&Greed"""
+    """Pobiera SPY/QQQ/IWM/VIX + Fear&Greed — używa fast_info dla aktualnych cen"""
     result={}
-    # Indeksy główne
-    for ticker,name in [("SPY","S&P 500"),("QQQ","NASDAQ"),("IWM","Russell 2000"),("^VIX","VIX")]:
+    for ticker,name in [("SPY","S&P 500"),("QQQ","NASDAQ 100"),("IWM","Russell 2000"),("^VIX","VIX")]:
         try:
-            h=yf.Ticker(ticker).history(period="60d",interval="1d",auto_adjust=True)
-            if h is None or len(h)<5: continue
-            c=h["Close"].dropna()
-            price=float(c.iloc[-1])
-            chg1d=safe_pct(c,2)
-            chg5d=safe_pct(c,6)
-            s50=float(sma(c,50).iloc[-1]) if len(c)>=50 else price
-            s200=float(sma(c,200).iloc[-1]) if len(c)>=200 else price
+            t=yf.Ticker(ticker)
+            # Użyj fast_info dla aktualnej ceny (nie historia)
+            fi=t.fast_info
+            price=float(fi.last_price)
+            prev_close=float(fi.previous_close)
+            chg1d=round((price/prev_close-1)*100,2) if prev_close else 0.0
+            # Historia tylko dla SMA i tygodniowej zmiany
+            h=t.history(period="60d",interval="1d",auto_adjust=True)
+            if h is not None and len(h)>=5:
+                c=h["Close"].dropna()
+                chg5d=safe_pct(c,6)
+                s50=float(sma(c,50).iloc[-1]) if len(c)>=50 else price
+                s200=float(sma(c,200).iloc[-1]) if len(c)>=200 else price
+            else:
+                chg5d=0.0; s50=price; s200=price
             abv50=(price>=s50)
             abv200=(price>=s200)
-            # Trend VIX: rośnie czy spada
-            vix_dir="up" if len(c)>=3 and float(c.iloc[-1])>float(c.iloc[-3]) else "dn"
+            vix_dir="up" if h is not None and len(h)>=4 and float(h["Close"].dropna().iloc[-1])>float(h["Close"].dropna().iloc[-4]) else "dn"
             result[ticker]={
-                "name":name,"price":round(price,2),"chg1d":chg1d,"chg5d":chg5d,
+                "name":name,"price":round(price,2),
+                "chg1d":chg1d,"chg5d":chg5d,
                 "abv50":abv50,"abv200":abv200,"vix_dir":vix_dir,
-                "c_series":c
+                "c_series":h["Close"].dropna() if h is not None and len(h)>=5 else None
             }
         except: pass
-    # Fear & Greed — własne obliczenie na podstawie danych rynkowych (Stock Market)
-    # Składowe wzorowane na CNN F&G:
-    # 1. RSI SPY 14D (25%) — wysokie RSI = chciwość
-    # 2. VIX poziom (25%) — niski VIX = chciwość
-    # 3. Momentum SPY vs SMA125 (25%) — cena powyżej długiej średniej = chciwość
-    # 4. Siła 52W High SPY (25%) — blisko ATH = chciwość
+            # Trend VIX: rośnie czy spada
+    # Fear & Greed — własne obliczenie z osobnego pobierania danych (1y history)
     try:
+        spy_h=yf.Ticker("SPY").history(period="1y",interval="1d",auto_adjust=True)
+        vix_h=yf.Ticker("^VIX").history(period="5d",interval="1d",auto_adjust=True)
         fg_parts=[]
-        # 1. RSI SPY
-        if "SPY" in result:
-            spy_c=result["SPY"].get("c_series")
-            if spy_c is not None and len(spy_c)>=16:
+
+        if spy_h is not None and len(spy_h)>=16:
+            spy_c=spy_h["Close"].dropna()
+            # Użyj aktualnej ceny z fast_info jeśli dostępna
+            spy_price=result["SPY"]["price"] if "SPY" in result else float(spy_c.iloc[-1])
+
+            # 1. RSI SPY 14D
+            if len(spy_c)>=16:
                 delta=spy_c.diff()
                 gain=delta.clip(lower=0).rolling(14).mean()
                 loss=(-delta.clip(upper=0)).rolling(14).mean()
                 rs=gain/(loss.replace(0,np.nan))
                 rsi=float((100-100/(1+rs)).iloc[-1])
-                fg_parts.append(rsi)
-        # 2. VIX score (odwrócony: niski VIX = wysoki score)
-        if "^VIX" in result:
-            vix_p=result["^VIX"]["price"]
-            vix_score=max(0,min(100,100-(vix_p-10)*2.5))
-            fg_parts.append(vix_score)
-        # 3. Momentum SPY vs SMA125
-        if "SPY" in result:
-            spy_c=result["SPY"].get("c_series")
-            if spy_c is not None and len(spy_c)>=126:
+                if not np.isnan(rsi): fg_parts.append(rsi)
+
+            # 2. Momentum vs SMA125
+            if len(spy_c)>=126:
                 s125=float(sma(spy_c,125).iloc[-1])
-                p_now=float(spy_c.iloc[-1])
-                mom_pct=(p_now/s125-1)*100
+                mom_pct=(spy_price/s125-1)*100
                 mom_score=max(0,min(100,50+mom_pct*4))
                 fg_parts.append(mom_score)
-        # 4. 52W High proximity
-        if "SPY" in result:
-            spy_c=result["SPY"].get("c_series")
-            if spy_c is not None and len(spy_c)>=252:
+
+            # 3. 52W High proximity
+            if len(spy_c)>=252:
                 h52=float(spy_c.tail(252).max())
-                p_now=float(spy_c.iloc[-1])
-                h52_score=max(0,min(100,(p_now/h52)*100))
+                h52_score=max(0,min(100,(spy_price/h52)*100))
                 fg_parts.append(h52_score)
+
+        # 4. VIX score
+        vix_price=result["^VIX"]["price"] if "^VIX" in result else 20.0
+        vix_score=max(0,min(100,100-(vix_price-10)*2.5))
+        fg_parts.append(vix_score)
 
         if fg_parts:
             fg_val=round(sum(fg_parts)/len(fg_parts))
+            fg_val=max(0,min(100,fg_val))
             if fg_val<=20:   fg_lbl="Extreme Fear"
             elif fg_val<=40: fg_lbl="Fear"
             elif fg_val<=60: fg_lbl="Neutral"
             elif fg_val<=80: fg_lbl="Greed"
             else:            fg_lbl="Extreme Greed"
-            result["fear_greed"]={"value":fg_val,"label":fg_lbl,"source":"calc"}
+            result["fear_greed"]={"value":fg_val,"label":fg_lbl}
         else:
             result["fear_greed"]={"value":None,"label":"N/A"}
     except:
