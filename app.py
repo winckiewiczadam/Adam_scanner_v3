@@ -494,75 +494,68 @@ with st.sidebar:
 
 @st.cache_data(ttl=900,show_spinner=False)
 def get_market_overview():
-    """Pobiera SPY/QQQ/IWM/VIX + Fear&Greed"""
     result={}
-    for ticker,name in [("SPY","S&P 500"),("QQQ","NASDAQ 100"),("IWM","Russell 2000"),("^VIX","VIX")]:
+    # Używamy tickerów indeksów (^GSPC, ^IXIC, ^RUT) zamiast ETF (SPY, QQQ, IWM)
+    # Indeksy nie mają problemu z adjustment
+    tickers_map=[
+        ("^GSPC","S&P 500","SPY"),
+        ("^IXIC","NASDAQ 100","QQQ"),
+        ("^RUT","Russell 2000","IWM"),
+        ("^VIX","VIX","^VIX"),
+    ]
+    for ticker,name,key in tickers_map:
         try:
             import datetime as _dt
             end=_dt.datetime.now()
             start=end-_dt.timedelta(days=400)
-            h=yf.download(ticker, start=start, end=end,
-                          interval="1d", auto_adjust=False, progress=False)
+            h=yf.download(ticker,start=start,end=end,
+                          interval="1d",auto_adjust=False,progress=False)
             if h is None or len(h)<5: continue
-            # Użyj Adj Close jeśli dostępne, inaczej Close
-            if "Adj Close" in h.columns:
-                c=h["Adj Close"].squeeze().dropna()
-            else:
-                c=h["Close"].squeeze().dropna()
+            c=h["Close"].squeeze().dropna()
             price=float(c.iloc[-1])
             prev=float(c.iloc[-2]) if len(c)>=2 else price
             chg1d=round((price/prev-1)*100,2)
             chg5d=round((price/float(c.iloc[-6])-1)*100,2) if len(c)>=6 else 0.0
             s50=float(sma(c,50).iloc[-1]) if len(c)>=50 else price
             s200=float(sma(c,200).iloc[-1]) if len(c)>=200 else price
-            abv50=(price>=s50)
-            abv200=(price>=s200)
             vix_dir="up" if len(c)>=4 and float(c.iloc[-1])>float(c.iloc[-4]) else "dn"
-            result[ticker]={
+            result[key]={
                 "name":name,"price":round(price,2),
                 "chg1d":chg1d,"chg5d":chg5d,
-                "abv50":abv50,"abv200":abv200,"vix_dir":vix_dir,
-                "c_series":c
+                "abv50":(price>=s50),"abv200":(price>=s200),
+                "vix_dir":vix_dir,"c_series":c
             }
         except: pass
             # Trend VIX: rośnie czy spada
-    # Fear & Greed — własne obliczenie z osobnego pobierania danych (1y history)
+    # Fear & Greed — własne obliczenie na podstawie ^GSPC (indeks, nie ETF)
     try:
         import datetime as _dt
         end=_dt.datetime.now(); start=end-_dt.timedelta(days=400)
-        spy_h=yf.download("SPY", start=start, end=end,
-                          interval="1d", auto_adjust=False, progress=False)
-        vix_h=yf.download("^VIX", start=start, end=end,
-                          interval="1d", auto_adjust=False, progress=False)
+        spy_h=yf.download("^GSPC",start=start,end=end,
+                          interval="1d",auto_adjust=False,progress=False)
         fg_parts=[]
-
         if spy_h is not None and len(spy_h)>=16:
-            spy_c=(spy_h["Adj Close"] if "Adj Close" in spy_h.columns else spy_h["Close"]).squeeze().dropna()
+            spy_c=spy_h["Close"].squeeze().dropna()
             spy_price=result["SPY"]["price"] if "SPY" in result else float(spy_c.iloc[-1])
-
-            # 1. RSI SPY 14D
+            # 1. RSI 14D
             delta=spy_c.diff()
             gain=delta.clip(lower=0).rolling(14).mean()
             loss=(-delta.clip(upper=0)).rolling(14).mean()
             rs=gain/(loss.replace(0,np.nan))
             rsi_val=float((100-100/(1+rs)).iloc[-1])
             if not np.isnan(rsi_val): fg_parts.append(rsi_val)
-
             # 2. Momentum vs SMA125
             if len(spy_c)>=126:
                 s125=float(sma(spy_c,125).iloc[-1])
                 mom_pct=(spy_price/s125-1)*100
                 fg_parts.append(max(0,min(100,50+mom_pct*4)))
-
             # 3. 52W High proximity
             if len(spy_c)>=252:
                 h52=float(spy_c.tail(252).max())
                 fg_parts.append(max(0,min(100,(spy_price/h52)*100)))
-
         # 4. VIX score
-        vix_price=result["^VIX"]["price"] if "^VIX" in result else 20.0
-        fg_parts.append(max(0,min(100,100-(vix_price-10)*2.5)))
-
+        vix_p=result["^VIX"]["price"] if "^VIX" in result else 20.0
+        fg_parts.append(max(0,min(100,100-(vix_p-10)*2.5)))
         if fg_parts:
             fg_val=max(0,min(100,round(sum(fg_parts)/len(fg_parts))))
             if fg_val<=20:   fg_lbl="Extreme Fear"
