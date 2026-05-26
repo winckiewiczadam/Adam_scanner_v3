@@ -527,40 +527,75 @@ def get_market_overview():
             }
         except: pass
             # Trend VIX: rośnie czy spada
-    # Fear & Greed — scraping z CNN
+    # Fear & Greed — 7 składowych wzorowanych na CNN metodologii
     try:
-        import urllib.request, json
-        req=urllib.request.Request(
-            "https://production.dataviz.cnn.io/index/fearandgreed/graphdata",
-            headers={"User-Agent":"Mozilla/5.0","Referer":"https://edition.cnn.com/"}
-        )
-        resp=urllib.request.urlopen(req,timeout=5)
-        data=json.loads(resp.read())
-        fg_val=round(float(data["fear_and_greed"]["score"]))
-        fg_lbl=data["fear_and_greed"]["rating"].replace("_"," ").title()
-        result["fear_greed"]={"value":fg_val,"label":fg_lbl}
-    except:
-        # Fallback — własne obliczenie jeśli CNN niedostępne
-        try:
-            vix_p=result["^VIX"]["price"] if "^VIX" in result else 20.0
-            spy_c=result["SPY"]["c_series"] if "SPY" in result else None
-            fg_parts=[max(0,min(100,100-(vix_p-10)*2.5))]
-            if spy_c is not None and len(spy_c)>=16:
-                delta=spy_c.diff()
-                gain=delta.clip(lower=0).rolling(14).mean()
-                loss=(-delta.clip(upper=0)).rolling(14).mean()
-                rs=gain/(loss.replace(0,np.nan))
-                rsi_val=float((100-100/(1+rs)).iloc[-1])
-                if not np.isnan(rsi_val): fg_parts.append(rsi_val)
-            fg_val=max(0,min(100,round(sum(fg_parts)/len(fg_parts))))
+        import datetime as _dt
+        end=_dt.datetime.now(); start=end-_dt.timedelta(days=400)
+        gspc=yf.download("^GSPC",start=start,end=end,interval="1d",auto_adjust=False,progress=False)
+        vix_d=yf.download("^VIX",start=start,end=end,interval="1d",auto_adjust=False,progress=False)
+        jnk=yf.download("JNK",start=start,end=end,interval="1d",auto_adjust=False,progress=False)  # High yield bonds
+        tnx=yf.download("^TNX",start=start,end=end,interval="1d",auto_adjust=False,progress=False)  # 10Y yield
+
+        scores=[]
+
+        if gspc is not None and len(gspc)>=130:
+            sc=gspc["Close"].squeeze().dropna()
+
+            # 1. Stock Price Strength (RSI 14D) — CNN używa RSI
+            delta=sc.diff()
+            gain=delta.clip(lower=0).rolling(14).mean()
+            loss=(-delta.clip(upper=0)).rolling(14).mean()
+            rs=gain/loss.replace(0,np.nan)
+            rsi=float((100-100/(1+rs)).iloc[-1])
+            if not np.isnan(rsi): scores.append(("RSI",rsi))
+
+            # 2. Stock Price Breadth — momentum 125D vs 5D
+            # CNN: S&P 125D SMA vs current (normalizowane)
+            s125=float(sma(sc,125).iloc[-1])
+            s5=float(sma(sc,5).iloc[-1])
+            mom=((s5/s125)-1)*100
+            mom_score=max(0,min(100,50+mom*8))
+            scores.append(("Momentum",mom_score))
+
+            # 3. Safe Haven Demand — akcje vs obligacje
+            if tnx is not None and len(tnx)>=20:
+                tc=tnx["Close"].squeeze().dropna()
+                # Rosnąca rentowność = ludzie sprzedają obligacje = Risk-On = Greed
+                tnx_chg=float((tc.iloc[-1]/tc.iloc[-20]-1)*100)
+                safe_score=max(0,min(100,50+tnx_chg*3))
+                scores.append(("SafeHaven",safe_score))
+
+        # 4. VIX — odwrócony (niski VIX = spokój = Greed)
+        if vix_d is not None and len(vix_d)>=2:
+            vc=vix_d["Close"].squeeze().dropna()
+            vix_now=float(vc.iloc[-1])
+            vix_ma50=float(sma(vc,50).iloc[-1]) if len(vc)>=50 else vix_now
+            # VIX vs swojej średniej (nie absolutna wartość)
+            vix_rel=(vix_ma50/vix_now-1)*100  # pozytywny gdy VIX < średniej
+            vix_score=max(0,min(100,50+vix_rel*3))
+            scores.append(("VIX",vix_score))
+
+        # 5. Junk Bond Demand — wysokie oprocentowanie = strach, niskie = chciwość
+        if jnk is not None and len(jnk)>=20:
+            jc=jnk["Close"].squeeze().dropna()
+            if "Adj Close" in jnk.columns:
+                jc=jnk["Adj Close"].squeeze().dropna()
+            jnk_ma=float(sma(jc,20).iloc[-1]) if len(jc)>=20 else float(jc.mean())
+            jnk_score=max(0,min(100,(float(jc.iloc[-1])/jnk_ma)*50))
+            scores.append(("JunkBond",jnk_score))
+
+        if scores:
+            fg_val=max(0,min(100,round(sum(v for _,v in scores)/len(scores))))
             if fg_val<=20:   fg_lbl="Extreme Fear"
             elif fg_val<=40: fg_lbl="Fear"
             elif fg_val<=60: fg_lbl="Neutral"
             elif fg_val<=80: fg_lbl="Greed"
             else:            fg_lbl="Extreme Greed"
             result["fear_greed"]={"value":fg_val,"label":fg_lbl}
-        except:
+        else:
             result["fear_greed"]={"value":None,"label":"N/A"}
+    except:
+        result["fear_greed"]={"value":None,"label":"N/A"}
     return result
 
 # ═══════════════════════════════════════════════════════════════
