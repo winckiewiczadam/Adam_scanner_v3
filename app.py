@@ -494,33 +494,29 @@ with st.sidebar:
 
 @st.cache_data(ttl=900,show_spinner=False)
 def get_market_overview():
-    """Pobiera SPY/QQQ/IWM/VIX + Fear&Greed — używa fast_info dla aktualnych cen"""
+    """Pobiera SPY/QQQ/IWM/VIX + Fear&Greed"""
     result={}
     for ticker,name in [("SPY","S&P 500"),("QQQ","NASDAQ 100"),("IWM","Russell 2000"),("^VIX","VIX")]:
         try:
-            t=yf.Ticker(ticker)
-            # Użyj fast_info dla aktualnej ceny (nie historia)
-            fi=t.fast_info
-            price=float(fi.last_price)
-            prev_close=float(fi.previous_close)
-            chg1d=round((price/prev_close-1)*100,2) if prev_close else 0.0
-            # Historia tylko dla SMA i tygodniowej zmiany
-            h=t.history(period="60d",interval="1d",auto_adjust=True)
-            if h is not None and len(h)>=5:
-                c=h["Close"].dropna()
-                chg5d=safe_pct(c,6)
-                s50=float(sma(c,50).iloc[-1]) if len(c)>=50 else price
-                s200=float(sma(c,200).iloc[-1]) if len(c)>=200 else price
-            else:
-                chg5d=0.0; s50=price; s200=price
+            # Pobierz ostatnie 2 dni — zawsze aktualne dane
+            h=yf.download(ticker, period="1y", interval="1d",
+                          auto_adjust=True, progress=False)
+            if h is None or len(h)<5: continue
+            c=h["Close"].squeeze().dropna()
+            price=float(c.iloc[-1])
+            prev=float(c.iloc[-2]) if len(c)>=2 else price
+            chg1d=round((price/prev-1)*100,2)
+            chg5d=round((price/float(c.iloc[-6])-1)*100,2) if len(c)>=6 else 0.0
+            s50=float(sma(c,50).iloc[-1]) if len(c)>=50 else price
+            s200=float(sma(c,200).iloc[-1]) if len(c)>=200 else price
             abv50=(price>=s50)
             abv200=(price>=s200)
-            vix_dir="up" if h is not None and len(h)>=4 and float(h["Close"].dropna().iloc[-1])>float(h["Close"].dropna().iloc[-4]) else "dn"
+            vix_dir="up" if len(c)>=4 and float(c.iloc[-1])>float(c.iloc[-4]) else "dn"
             result[ticker]={
                 "name":name,"price":round(price,2),
                 "chg1d":chg1d,"chg5d":chg5d,
                 "abv50":abv50,"abv200":abv200,"vix_dir":vix_dir,
-                "c_series":h["Close"].dropna() if h is not None and len(h)>=5 else None
+                "c_series":c
             }
         except: pass
             # Trend VIX: rośnie czy spada
