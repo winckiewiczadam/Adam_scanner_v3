@@ -492,15 +492,18 @@ with st.sidebar:
     st.markdown("---")
     st.markdown('<div style="font-size:9px;color:#555;line-height:1.8">Dane: Yahoo Finance<br>⚠️ Tylko edukacyjnie<br>Nie jest poradą inwest.</div>', unsafe_allow_html=True)
 
-@st.cache_data(ttl=900,show_spinner=False)
+@st.cache_data(ttl=60,show_spinner=False)  # TTL 1 minuta dla debugowania
 def get_market_overview():
     """Pobiera SPY/QQQ/IWM/VIX + Fear&Greed"""
     result={}
     for ticker,name in [("SPY","S&P 500"),("QQQ","NASDAQ 100"),("IWM","Russell 2000"),("^VIX","VIX")]:
         try:
-            # Pobierz ostatnie 2 dni — zawsze aktualne dane
-            h=yf.download(ticker, period="1y", interval="1d",
-                          auto_adjust=True, progress=False)
+            import datetime as _dt
+            # Pobierz ostatnie 5 dni żeby mieć pewność aktualnych danych
+            end=_dt.datetime.now()
+            start=end-_dt.timedelta(days=400)
+            h=yf.download(ticker, start=start, end=end,
+                          interval="1d", auto_adjust=True, progress=False)
             if h is None or len(h)<5: continue
             c=h["Close"].squeeze().dropna()
             price=float(c.iloc[-1])
@@ -516,9 +519,12 @@ def get_market_overview():
                 "name":name,"price":round(price,2),
                 "chg1d":chg1d,"chg5d":chg5d,
                 "abv50":abv50,"abv200":abv200,"vix_dir":vix_dir,
-                "c_series":c
+                "c_series":c,
+                "last_date":str(c.index[-1])  # debug: data ostatniej świecy
             }
-        except: pass
+        except Exception as e:
+            result[ticker]={"error":str(e)}
+            pass
             # Trend VIX: rośnie czy spada
     # Fear & Greed — własne obliczenie z osobnego pobierania danych (1y history)
     try:
@@ -669,6 +675,10 @@ if page == "🌍  Market Radar":
     with mc3: st.markdown(idx_card("IWM","Russell 2000",mkt.get("IWM")),unsafe_allow_html=True)
     with mc4: st.markdown(vix_card(mkt.get("^VIX")),unsafe_allow_html=True)
     with mc5: st.markdown(fg_card(mkt.get("fear_greed")),unsafe_allow_html=True)
+
+    # Debug — data ostatniej świecy
+    spy_d=mkt.get("SPY",{})
+    st.caption(f"Debug — SPY cena: ${spy_d.get('price','?')} | Ostatnia świeca: {spy_d.get('last_date','?')} | Błąd: {spy_d.get('error','brak')}")
 
     st.markdown("---")
 
