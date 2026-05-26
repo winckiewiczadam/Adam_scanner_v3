@@ -527,36 +527,31 @@ def get_market_overview():
             }
         except: pass
             # Trend VIX: rośnie czy spada
-    # Fear & Greed — własne obliczenie na podstawie ^GSPC (indeks, nie ETF)
+    # Fear & Greed — scraping z CNN
     try:
-        import datetime as _dt
-        end=_dt.datetime.now(); start=end-_dt.timedelta(days=400)
-        spy_h=yf.download("^GSPC",start=start,end=end,
-                          interval="1d",auto_adjust=False,progress=False)
-        fg_parts=[]
-        if spy_h is not None and len(spy_h)>=16:
-            spy_c=spy_h["Close"].squeeze().dropna()
-            spy_price=result["SPY"]["price"] if "SPY" in result else float(spy_c.iloc[-1])
-            # 1. RSI 14D
-            delta=spy_c.diff()
-            gain=delta.clip(lower=0).rolling(14).mean()
-            loss=(-delta.clip(upper=0)).rolling(14).mean()
-            rs=gain/(loss.replace(0,np.nan))
-            rsi_val=float((100-100/(1+rs)).iloc[-1])
-            if not np.isnan(rsi_val): fg_parts.append(rsi_val)
-            # 2. Momentum vs SMA125
-            if len(spy_c)>=126:
-                s125=float(sma(spy_c,125).iloc[-1])
-                mom_pct=(spy_price/s125-1)*100
-                fg_parts.append(max(0,min(100,50+mom_pct*4)))
-            # 3. 52W High proximity
-            if len(spy_c)>=252:
-                h52=float(spy_c.tail(252).max())
-                fg_parts.append(max(0,min(100,(spy_price/h52)*100)))
-        # 4. VIX score
-        vix_p=result["^VIX"]["price"] if "^VIX" in result else 20.0
-        fg_parts.append(max(0,min(100,100-(vix_p-10)*2.5)))
-        if fg_parts:
+        import urllib.request, json
+        req=urllib.request.Request(
+            "https://production.dataviz.cnn.io/index/fearandgreed/graphdata",
+            headers={"User-Agent":"Mozilla/5.0","Referer":"https://edition.cnn.com/"}
+        )
+        resp=urllib.request.urlopen(req,timeout=5)
+        data=json.loads(resp.read())
+        fg_val=round(float(data["fear_and_greed"]["score"]))
+        fg_lbl=data["fear_and_greed"]["rating"].replace("_"," ").title()
+        result["fear_greed"]={"value":fg_val,"label":fg_lbl}
+    except:
+        # Fallback — własne obliczenie jeśli CNN niedostępne
+        try:
+            vix_p=result["^VIX"]["price"] if "^VIX" in result else 20.0
+            spy_c=result["SPY"]["c_series"] if "SPY" in result else None
+            fg_parts=[max(0,min(100,100-(vix_p-10)*2.5))]
+            if spy_c is not None and len(spy_c)>=16:
+                delta=spy_c.diff()
+                gain=delta.clip(lower=0).rolling(14).mean()
+                loss=(-delta.clip(upper=0)).rolling(14).mean()
+                rs=gain/(loss.replace(0,np.nan))
+                rsi_val=float((100-100/(1+rs)).iloc[-1])
+                if not np.isnan(rsi_val): fg_parts.append(rsi_val)
             fg_val=max(0,min(100,round(sum(fg_parts)/len(fg_parts))))
             if fg_val<=20:   fg_lbl="Extreme Fear"
             elif fg_val<=40: fg_lbl="Fear"
@@ -564,10 +559,8 @@ def get_market_overview():
             elif fg_val<=80: fg_lbl="Greed"
             else:            fg_lbl="Extreme Greed"
             result["fear_greed"]={"value":fg_val,"label":fg_lbl}
-        else:
+        except:
             result["fear_greed"]={"value":None,"label":"N/A"}
-    except:
-        result["fear_greed"]={"value":None,"label":"N/A"}
     return result
 
 # ═══════════════════════════════════════════════════════════════
